@@ -45,14 +45,6 @@ async fn send_system_ws_messages(state: Arc<AppState>) {
     }
 }
 
-// TODO: send built info
-// TODO: send versions of the CI
-// TODO: send versions of rust, npm, etc. use npm built equivalent
-// TODO: highlight rust/axum process in the list of processes
-// TODO: switch to using JS framework for the frontend
-// TODO: setup hot reloading for front and back end
-// TODO: optimize perf
-// TODO: make build.rs build the frontend
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()

@@ -2,6 +2,18 @@
 
 [Raspberry Pi][raspberry] dashboard that mimics the style of old [BIOS][bios] designs.
 
+## TODO
+
+- [ ] send built info
+- [ ] send versions of the CI
+- [ ] send versions of rust, npm, etc. use npm built equivalent
+- [ ] highlight rust/axum process in the list of processes
+- [ ] switch to using JS framework for the frontend
+- [ ] setup hot reloading for front and back end
+- [ ] optimize perf
+- [ ] make build.rs build the frontend
+- [ ] pre-commit lint, rust fmt, clippy, build check, etc.
+
 ## Features
 
 <!-- TODO: Add more features and packages/crates -->
