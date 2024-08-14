@@ -1,10 +1,29 @@
 {
     "cSpell.words": [
+        "amera",
+        "arranty",
         "chrono",
+        "EEPROM",
+        "GPIO",
+        "imensions",
+        "isplay",
+        "LPDDR",
+        "Mathematica",
+        "MIPI",
+        "oftware",
+        "ower",
         "Piotr",
         "Placzek",
         "RSPI",
-        "strptime"
+        "scandisk",
+        "statemachine",
+        "strptime",
+        "sysinfo",
+        "thernet",
+        "torage",
+        "ultimedia",
+        "upport",
+        "websockets"
     ],
     "markdownlint.config": {
         "MD013": true

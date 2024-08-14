@@ -70,6 +70,7 @@ async fn main() {
     tokio::spawn(send_system_ws_messages(state.clone()));
 
     // build our application with some routes
+    // ? maybe use https://docs.rs/tower-default-headers/latest/tower_default_headers/ to add 'server: Axum' header
     let app = Router::new()
         .fallback_service(ServeDir::new(assets_dir).append_index_html_on_directories(true))
         .route("/ws", get(ws_handler))
