@@ -38,7 +38,14 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 //allows to extract the IP of connecting user
 use axum::extract::connect_info::ConnectInfo;
 
+// Use of a mod or pub mod is not actually necessary.
+pub mod built_info {
+    // The file has been placed there by the build script.
+    include!(concat!(env!("OUT_DIR"), "/built.rs"));
+ }
+
 const SYSTEM_REFRESH_PERIOD: Duration = Duration::from_secs(1);
+const PKG_VERSION: &str = built_info::PKG_VERSION;
 
 struct AppState {
     system_tx: broadcast::Sender<Message>,
@@ -132,12 +139,19 @@ async fn handle_socket(mut socket: WebSocket, who: SocketAddr, State(state): Sta
     let mut rx = state.system_tx.subscribe();
 
     // send a ping (unsupported by some browsers) just to kick things off and get a response
-    if socket.send(Message::Ping(vec![1, 2, 3])).await.is_ok() {
+    if socket.send(Message::Text(PKG_VERSION.to_owned())).await.is_ok() {
         println!("Pinged {who}...");
     } else {
         println!("Could not send ping {who}!");
         // no Error here since the only thing we can do is to close the connection.
         // If we can not send messages, there is no way to salvage the statemachine anyway.
+        return;
+    }
+
+    if socket.send(Message::Ping(vec![1, 2, 3])).await.is_ok() {
+        println!("Sent built info {who}...");
+    } else {
+        println!("Could not send built info {who}!");
         return;
     }
 
