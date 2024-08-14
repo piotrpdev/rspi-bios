@@ -1,11 +1,11 @@
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  /* font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
   color-scheme: light dark;
   color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  background-color: #242424; */
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -13,67 +13,57 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
+.scandisk-button {
+  background-color: rgb(80, 80, 80);
+  color: rgb(168, 168, 168);
+  margin-right: 20px;
 }
-a:hover {
-  color: #535bf2;
+#boot-table tbody tr td {
+  border-right: 0;
 }
-
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+#boot-table tbody tr td {
+  padding-left: 12px;
 }
-
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+#boot-table tbody tr:nth-child(3) {
+  border-bottom: 1px solid white;
 }
-
-.card {
-  padding: 2em;
+#boot-table tbody tr:nth-child(3) td {
+  padding-bottom: 10px;
+}
+#boot-table tbody tr:nth-child(4) td {
+  padding-top: 10px;
 }
 
-#app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
+#pci-table {
+  border: 0;
+  width: 100%;
+}
+
+#session-8 .tui-fieldset {
+  border: 0;
+}
+
+#pci-table tbody tr td {
+  border-right: 0;
+}
+#pci-table tbody tr td {
   text-align: center;
 }
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
+/* #pci-table tbody tr td {
+  padding-left: 12px;
+} */
+#pci-table tbody tr:nth-child(1) {
+  border-bottom: 1px solid white;
 }
-button:hover {
-  border-color: #646cff;
+#pci-table tbody tr:nth-child(1) td {
+  padding-bottom: 10px;
 }
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+#pci-table tbody tr:nth-child(2) td {
+  padding-top: 10px;
 }
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+/* #boot-table tbody tr td:nth-child(1), #boot-table tbody tr td:nth-child(4) {
+  max-width: 120px;
 }
+#boot-table tbody tr td:nth-child(3) {
+  max-width: 180px;
+} */

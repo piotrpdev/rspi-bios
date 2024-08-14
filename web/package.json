@@ -20,5 +20,8 @@
 		"tslib": "^2.6.3",
 		"typescript": "^5.5.3",
 		"vite": "^5.4.0"
+	},
+	"dependencies": {
+		"tuicss": "^2.1.2"
 	}
 }

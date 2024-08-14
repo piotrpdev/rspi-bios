@@ -1,3 +1,5 @@
+import "tuicss/dist/tuicss.css";
+import "tuicss/dist/tuicss.js";
 import "./app.css";
 import App from "./App.svelte";
 
