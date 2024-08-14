@@ -1,6 +1,10 @@
 {
     "cSpell.words": [
         "chrono",
+        "RSPI",
         "strptime"
-    ]
+    ],
+    "markdownlint.config": {
+        "MD013": true
+    }
 }
