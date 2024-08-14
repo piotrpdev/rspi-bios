@@ -63,7 +63,7 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let assets_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
+    let web_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("web/dist/");
 
     // Create a new broadcast channel
     let (tx, _rx) = broadcast::channel(100);
@@ -80,7 +80,7 @@ async fn main() {
     // build our application with some routes
     // ? maybe use https://docs.rs/tower-default-headers/latest/tower_default_headers/ to add 'server: Axum' header
     let app = Router::new()
-        .fallback_service(ServeDir::new(assets_dir).append_index_html_on_directories(true))
+        .fallback_service(ServeDir::new(web_dir).append_index_html_on_directories(true))
         .route("/ws", get(ws_handler))
         // logging so we can see whats going on
         .layer(
