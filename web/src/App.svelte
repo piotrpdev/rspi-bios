@@ -1,6 +1,6 @@
 <script lang="ts">
-import Startup from "./lib/screens/Startup.svelte";
 import Ascii from "./lib/screens/ScanDisk.svelte";
+import Startup from "./lib/screens/Startup.svelte";
 
 // const socket = new WebSocket("ws://localhost:3000/ws");
 // socket.addEventListener("message", (event) => {

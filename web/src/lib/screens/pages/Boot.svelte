@@ -1,8 +1,8 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { check, showSession, timeout } from "../../../helpers";
 import awardSoftwareLogo from "../../../assets/award_software_logo.png";
 import energyStarLogo from "../../../assets/energy_star_logo.png";
+import { check, showSession, timeout } from "../../../helpers";
 
 export let isFinished = false;
 
