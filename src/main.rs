@@ -8,10 +8,16 @@ use axum::{
     Router,
 };
 use axum_extra::TypedHeader;
+use notify::RecursiveMode;
+use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use sysinfo::System;
 use tokio::sync::{broadcast, Mutex};
+use tower_livereload::LiveReloadLayer;
 
-use std::{net::SocketAddr, path::PathBuf};
+use std::{
+    net::SocketAddr,
+    path::{Path, PathBuf},
+};
 use std::{sync::Arc, time::Duration};
 use tower_http::{
     services::ServeDir,
@@ -72,6 +78,9 @@ async fn main() {
     // Spawn a task to send events
     tokio::spawn(send_system_ws_messages(state.clone()));
 
+    let livereload = LiveReloadLayer::new();
+    let reloader = livereload.reloader();
+
     // build our application with some routes
     // ? maybe use https://docs.rs/tower-default-headers/latest/tower_default_headers/ to add 'server: Axum' header
     let app = Router::new()
@@ -82,7 +91,22 @@ async fn main() {
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::default().include_headers(true)),
         )
-        .with_state(state);
+        .with_state(state)
+        .layer(livereload);
+
+    let mut debouncer = new_debouncer(
+        Duration::from_millis(100),
+        move |res: DebounceEventResult| match res {
+            Ok(_) => reloader.reload(),
+            Err(e) => tracing::error!("Watcher (debouncer) Error {:?}", e),
+        },
+    )
+    .unwrap();
+
+    debouncer
+        .watcher()
+        .watch(Path::new("./web/dist"), RecursiveMode::Recursive)
+        .unwrap();
 
     // run it with hyper
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")

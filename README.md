@@ -8,11 +8,10 @@
 - [ ] send versions of the CI
 - [ ] send versions of rust, npm, etc. use npm built equivalent
 - [ ] highlight rust/axum process in the list of processes
-- [ ] switch to using JS framework for the frontend
-- [ ] setup hot reloading for front and back end
+- [x] switch to using JS framework for the frontend
+- [x] setup hot reloading for front and back end
 - [ ] optimize perf
-- [ ] make build.rs build the frontend
-- [ ] pre-commit lint, rust fmt, clippy, build check, etc.
+- [x] pre-commit lint, rust fmt, clippy, build check, etc.
 
 ## Features
 
@@ -25,12 +24,34 @@
 - [x] Mimics old [BIOS](bios) designs
   - *...using the [TuiCss][tuicss] package*
 
+## Usage
+
+### Release
+
+```bash
+NODE_ENV=production npm run --prefix ./web/ build && cargo build --release
+```
+
+### Development
+
+> [!NOTE]
+> You might need to check `Disable cache` in Chrome DevTools to avoid `404`s.
+
+```bash
+# Listen for ./web/ file changes and rebuild
+npm run --prefix ./web/ build:watch
+# Listen for ./src/ file changes and rebuild (run in another terminal)
+cargo-watch --watch src -x run
+```
+
 ## License
 
 This project is licensed under the [GNU GPL v3.0][gplv3], see [`LICENSE`][license].
 
 Based on [MIT][mit]-licensed [Axum example code][axum-examples],
 see [`tokio-rs/axum/LICENSE`][axum-license].
+
+Some code copied from [this template][axum-vite-template] (unknown license).
 
 Website design based on the "Award Modular BIOS", all rights reserved by
 [Award Software][award] / [Phoenix Technologies][phoenix].
@@ -51,6 +72,7 @@ Website design based on the "Award Modular BIOS", all rights reserved by
 [mit]: https://opensource.org/license/mit
 [axum-examples]: https://github.com/tokio-rs/axum/tree/main/examples
 [axum-license]: https://github.com/tokio-rs/axum/blob/main/axum/LICENSE
+[axum-vite-template]: https://github.com/varonroy/template-axum-htmx-vite-tailwind
 [award]: https://en.wikipedia.org/wiki/Award_Software
 [phoenix]: https://www.phoenix.com/
 [energy-star]: https://www.energystar.gov/
