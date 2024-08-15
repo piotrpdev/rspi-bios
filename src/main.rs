@@ -43,7 +43,7 @@ async fn send_system_ws_messages(state: Arc<AppState>) {
         interval.tick().await;
         let mut system = state.system.lock().await;
         system.refresh_all();
-        let event = Message::Text(format!("{:?}", system));
+        let event = Message::Text(format!("{system:?}"));
         let _ = state.system_tx.send(event);
     }
 }

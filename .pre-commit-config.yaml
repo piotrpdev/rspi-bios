@@ -28,8 +28,16 @@ repos:
             types: [text]
             files: "\\.(jsx?|tsx?|c(js|ts)|m(js|ts)|d\\.(ts|cts|mts)|jsonc?|css)$"
             pass_filenames: false
-    - repo: https://github.com/doublify/pre-commit-rust
-      rev: v1.0
-      hooks:
           - id: fmt
-          - id: cargo-check
+            name: fmt
+            entry: cargo fmt
+            language: system
+            types: [rust]
+            args: ["--"]
+          - id: clippy
+            name: clippy
+            entry: cargo clippy
+            language: system
+            types: [rust]
+            args: ["--fix", "--allow-staged", "--", "-W", "clippy::pedantic", "-D", "warnings"]
+            pass_filenames: false
