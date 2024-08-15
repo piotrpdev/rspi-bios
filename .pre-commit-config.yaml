@@ -15,11 +15,10 @@ repos:
           - id: check-json
           - id: check-toml
           - id: check-added-large-files
-    - repo: https://github.com/markdownlint/markdownlint
+    - repo: https://github.com/DavidAnson/markdownlint-cli2
       rev: v0.13.0
       hooks:
-          - id: markdownlint
-            args: [-s, .markdownlint.rb]
+          - id: markdownlint-cli2
     - repo: local
       hooks:
           - id: local-web-lint

@@ -28,8 +28,5 @@
         "ultimedia",
         "upport",
         "websockets"
-    ],
-    "markdownlint.config": {
-        "MD013": true
-    }
+    ]
 }
