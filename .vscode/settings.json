@@ -3,6 +3,8 @@
         "amera",
         "arranty",
         "chrono",
+        "clippy",
+        "commitizen",
         "EEPROM",
         "GPIO",
         "imensions",
@@ -22,6 +24,7 @@
         "sysinfo",
         "thernet",
         "torage",
+        "tuicss",
         "ultimedia",
         "upport",
         "websockets"
