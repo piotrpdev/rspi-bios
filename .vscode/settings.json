@@ -8,6 +8,7 @@
         "imensions",
         "isplay",
         "LPDDR",
+        "markdownlint",
         "Mathematica",
         "MIPI",
         "oftware",
@@ -27,7 +28,5 @@
     ],
     "markdownlint.config": {
         "MD013": true
-    },
-    "editor.formatOnSave": true,
-    "editor.defaultFormatter": "biomejs.biome"
+    }
 }

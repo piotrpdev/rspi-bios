@@ -1,10 +1,36 @@
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
 repos:
+    - repo: https://github.com/commitizen-tools/commitizen
+      rev: v3.29.0
+      hooks:
+          - id: commitizen
     - repo: https://github.com/pre-commit/pre-commit-hooks
-      rev: v3.2.0
+      rev: v4.6.0
       hooks:
           - id: trailing-whitespace
           - id: end-of-file-fixer
+          - id: mixed-line-ending
           - id: check-yaml
+          - id: check-json
+          - id: check-toml
           - id: check-added-large-files
+    - repo: https://github.com/markdownlint/markdownlint
+      rev: v0.13.0
+      hooks:
+          - id: markdownlint
+            args: [-s, .markdownlint.rb]
+    - repo: local
+      hooks:
+          - id: local-web-lint
+            name: web lint:write
+            entry: npm run --prefix ./web/ lint:write
+            language: system
+            types: [text]
+            files: "\\.(jsx?|tsx?|c(js|ts)|m(js|ts)|d\\.(ts|cts|mts)|jsonc?|css)$"
+            pass_filenames: false
+    - repo: https://github.com/doublify/pre-commit-rust
+      rev: v1.0
+      hooks:
+          - id: fmt
+          - id: cargo-check

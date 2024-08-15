@@ -1,5 +1,8 @@
 use axum::{
-    extract::{ws::{Message, WebSocket, WebSocketUpgrade}, State},
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        State,
+    },
     response::IntoResponse,
     routing::get,
     Router,
@@ -8,8 +11,8 @@ use axum_extra::TypedHeader;
 use sysinfo::System;
 use tokio::sync::{broadcast, Mutex};
 
-use std::{sync::Arc, time::Duration};
 use std::{net::SocketAddr, path::PathBuf};
+use std::{sync::Arc, time::Duration};
 use tower_http::{
     services::ServeDir,
     trace::{DefaultMakeSpan, TraceLayer},
@@ -24,7 +27,7 @@ use axum::extract::connect_info::ConnectInfo;
 pub mod built_info {
     // The file has been placed there by the build script.
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
- }
+}
 
 const SYSTEM_REFRESH_PERIOD: Duration = Duration::from_secs(1);
 const PKG_VERSION: &str = built_info::PKG_VERSION;
@@ -122,7 +125,11 @@ async fn handle_socket(mut socket: WebSocket, who: SocketAddr, State(state): Sta
     let mut rx = state.system_tx.subscribe();
 
     // send a ping (unsupported by some browsers) just to kick things off and get a response
-    if socket.send(Message::Text(PKG_VERSION.to_owned())).await.is_ok() {
+    if socket
+        .send(Message::Text(PKG_VERSION.to_owned()))
+        .await
+        .is_ok()
+    {
         println!("Pinged {who}...");
     } else {
         println!("Could not send ping {who}!");
