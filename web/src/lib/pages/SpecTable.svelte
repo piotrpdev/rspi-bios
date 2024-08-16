@@ -1,26 +1,28 @@
 <script lang="ts">
+import { timeout } from "@lib/helpers";
 import { onMount } from "svelte";
-import { exitBoot, showSession, timeout } from "../../../helpers";
 
 export let isFinished = false;
+let showPciWait = false;
+let showPciTable = false;
+let showDmi = false;
+let showStart = false;
 
 onMount(async () => {
-	showSession("session-6");
 	await timeout(500);
-	showSession("session-7");
+	showPciWait = true;
 	await timeout(800);
-	showSession("session-8");
+	showPciTable = true;
 	await timeout(500);
-	showSession("session-9");
+	showDmi = true;
 	await timeout(1200);
-	showSession("session-10");
+	showStart = true;
 	await timeout(1000);
-	exitBoot();
 	isFinished = true;
 });
 </script>
 
-<div id="session-6" style="visibility: hidden;">
+<div>
     <br />
     <div style="text-align: left; background-color: black; ">
         <fieldset class="tui-fieldset" style="padding: 12px 0;">
@@ -105,45 +107,53 @@ onMount(async () => {
     <br />
     <br />
     <br />
-    <span id="session-7" style="visibility: hidden;">PCI device listing.....</span>
-    <div id="session-8" style="text-align: left; background-color: black; visibility: hidden;">
-        <fieldset class="tui-fieldset" style="padding: 12px 0;">
-            <table id="pci-table" class="tui-table">
-                <tbody>
-                      <tr>
-                        <td>Bus No.</td>
-                        <td>Device No.</td>
-                        <td>Func No.</td>
-                        <td>Vendor ID</td>
-                        <td>Device ID</td>
-                        <td>Device Class</td>
-                        <td>IRQ</td>
-                      </tr>
-                      <tr>
-                        <td>0</td>
-                        <td>7</td>
-                        <td>1</td>
-                        <td>0086</td>
-                        <td>1230</td>
-                        <td>IDE Controller</td>
-                        <td>14</td>
-                      </tr>
-                      <tr>
-                        <td>0</td>
-                        <td>17</td>
-                        <td>0</td>
-                        <td>1274</td>
-                        <td>1371</td>
-                        <td>Multimedia Device</td>
-                        <td>11</td>
-                      </tr>
-                </tbody>
-            </table>
-        </fieldset>
-    </div>
+    {#if showPciWait}
+      <span>PCI device listing.....</span>
+    {/if}
+    {#if showPciTable}
+      <div style="text-align: left; background-color: black;">
+          <fieldset class="tui-fieldset" style="padding: 12px 0;">
+              <table id="pci-table" class="tui-table">
+                  <tbody>
+                        <tr>
+                          <td>Bus No.</td>
+                          <td>Device No.</td>
+                          <td>Func No.</td>
+                          <td>Vendor ID</td>
+                          <td>Device ID</td>
+                          <td>Device Class</td>
+                          <td>IRQ</td>
+                        </tr>
+                        <tr>
+                          <td>0</td>
+                          <td>7</td>
+                          <td>1</td>
+                          <td>0086</td>
+                          <td>1230</td>
+                          <td>IDE Controller</td>
+                          <td>14</td>
+                        </tr>
+                        <tr>
+                          <td>0</td>
+                          <td>17</td>
+                          <td>0</td>
+                          <td>1274</td>
+                          <td>1371</td>
+                          <td>Multimedia Device</td>
+                          <td>11</td>
+                        </tr>
+                  </tbody>
+              </table>
+          </fieldset>
+      </div>
+    {/if}
     <br />
     <br />
-    <span id="session-9" style="visibility: hidden;">Verifying DMI Pool Data ......</span>
+    {#if showDmi}
+      <span id="session-9">Verifying DMI Pool Data ......</span>
+    {/if}
     <br />
-    <span id="session-10" style="visibility: hidden;">Starting Raspberry Pi OS.....</span>
+    {#if showStart}
+      <span id="session-10">Starting Raspberry Pi OS.....</span>
+    {/if}
 </div>

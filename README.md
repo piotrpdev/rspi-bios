@@ -21,6 +21,7 @@
 - [ ] add proper error handling
 - [ ] add graceful tls shutdown
 - [ ] maybe handle HEAD
+- [x] show/hide pages in screens
 
 ## Features
 

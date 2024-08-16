@@ -3,7 +3,6 @@ import Ascii from "./lib/screens/ScanDisk.svelte";
 import Startup from "./lib/screens/Startup.svelte";
 
 // const eventSource = new EventSource('sse');
-
 // eventSource.onmessage = (event) => {
 //   console.log('Message from server ', event.data);
 // }

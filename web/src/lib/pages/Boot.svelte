@@ -1,10 +1,15 @@
 <script lang="ts">
+import awardSoftwareLogo from "@assets/award_software_logo.png";
+import energyStarLogo from "@assets/energy_star_logo.png";
+import { check, timeout } from "@lib/helpers";
 import { onMount } from "svelte";
-import awardSoftwareLogo from "../../../assets/award_software_logo.png";
-import energyStarLogo from "../../../assets/energy_star_logo.png";
-import { check, showSession, timeout } from "../../../helpers";
 
 export let isFinished = false;
+
+let showExtension = false;
+let showPrimaryMaster = false;
+let showPrimarySlave = false;
+let showSecondary = false;
 
 async function memoryTest() {
 	// 4194304 OK
@@ -21,21 +26,19 @@ async function memoryTest() {
 onMount(async () => {
 	await memoryTest();
 	await timeout(300);
-	showSession("session-1");
+	showExtension = true;
 	await timeout(100);
-	showSession("session-2");
+	showPrimaryMaster = true;
 	await timeout(50);
-	showSession("session-3");
+	showPrimarySlave = true;
 	await timeout(420);
-	showSession("session-4");
-	await timeout(800);
-	check(document.getElementById("session-0")).style.display = "none";
-	await timeout(500);
+	showSecondary = true;
+	await timeout(1300);
 	isFinished = true;
 });
 </script>
 
-<div id="session-0">
+<div>
     <img alt="Award logo" src={awardSoftwareLogo} width="40px" height="40px" style="float: left" />
     <img alt="Energy Star logo" src={energyStarLogo} width="200px" height="150px" style="float: right" />
     <div style="margin-top: 4px"></div>
@@ -45,21 +48,29 @@ onMount(async () => {
     Broadcom(R) BCM2711 Cortex-A72 (4) 1500 MHz<br>
     <span id="memoryTest">Memory Test : &nbsp;&nbsp;</span>
     <br><br>
-    <div id="session-1" style="visibility: hidden">
-        Award Plug and Play BIOS Extension v1.0A<br>
-        Initialize Plug and Play Cards...<br>
-        PNP init Completed<br><br>
-    </div>
-    <div id="session-2" style="visibility: hidden">
-        Detecting Primary Master .....: Boot EEPROM<br>
-    </div>
-    <div id="session-3" style="visibility: hidden">
-        Detecting Primary Slave ......: SanDisk SD<br>
-    </div>
-    <div id="session-4" style="visibility: hidden">
-        Detecting Secondary Master ...: Skip<br>
-        Detecting Secondary Slave ....: None
-    </div>
+    {#if showExtension}
+        <div>
+            Award Plug and Play BIOS Extension v1.0A<br>
+            Initialize Plug and Play Cards...<br>
+            PNP init Completed<br><br>
+        </div>
+    {/if}
+    {#if showPrimaryMaster}
+        <div>
+            Detecting Primary Master .....: Boot EEPROM<br>
+        </div>
+    {/if}
+    {#if showPrimarySlave}
+        <div>
+            Detecting Primary Slave ......: SanDisk SD<br>
+        </div>
+    {/if}
+    {#if showSecondary}
+        <div>
+            Detecting Secondary Master ...: Skip<br>
+            Detecting Secondary Slave ....: None
+        </div>
+    {/if}
     <div class="tui-statusbar absolute black white-text">
         <ul>
             <li style="margin-left: 0px">Press <b>DEL</b> to enter SETUP, <b>Alt+F2</b> to enter EZ flash utility
