@@ -56,20 +56,18 @@ cargo-watch --watch src -x run
 
 ## License
 
-This project is licensed under the [GNU GPL v3.0][gplv3], see [`LICENSE`][license].
+This project is licensed under the [GNU GPL v3.0][license].
 
-Based on [MIT][mit]-licensed [Axum example code][axum-examples],
-see [`tokio-rs/axum/LICENSE`][axum-license].
+Made using the following resources:
 
-Some code copied from [this template][axum-vite-template] (unknown license).
-
-Website design based on the "Award Modular BIOS", all rights reserved by
-[Award Software][award] / [Phoenix Technologies][phoenix].
-
-[Energy Star][energy-star] is a trademark of the
-[U.S. Environmental Protection Agency][epa].
-
-[Raspberry Pi][raspberry] is a trademark of [Raspberry Pi Ltd][raspberry-foundation].
+| Resource                                  | License                           |
+|:-----------------------------------------:|:---------------------------------:|
+| [Axum Vite template][axum-vite-template]  | N/A                               |
+| [Axum example code][axum-examples]        | [MIT][axum-license]               |
+| [TuiCSS "PC Startup" demo][pc-startup]    | [MIT][tuicss-license]             |
+| "Award Medallion BIOS" design             | [Copyrighted][phoenix]            |
+| [Energy Star logo][energy-star]           | [Trademark][epa]                  |
+| [Raspberry Pi logo][raspberry]            | [Trademark][raspberry-foundation] |
 
 [raspberry]: https://www.raspberrypi.org/
 [raspberry-foundation]: https://www.raspberrypi.org/about/
@@ -77,13 +75,12 @@ Website design based on the "Award Modular BIOS", all rights reserved by
 [axum]: https://github.com/tokio-rs/axum
 [sysinfo]: https://github.com/GuillaumeGomez/sysinfo
 [tuicss]: https://github.com/vinibiavatti1/TuiCss
-[gplv3]: https://www.gnu.org/licenses/gpl-3.0.en.html
 [license]: ./LICENSE
-[mit]: https://opensource.org/license/mit
 [axum-examples]: https://github.com/tokio-rs/axum/tree/main/examples
 [axum-license]: https://github.com/tokio-rs/axum/blob/main/axum/LICENSE
 [axum-vite-template]: https://github.com/varonroy/template-axum-htmx-vite-tailwind
-[award]: https://en.wikipedia.org/wiki/Award_Software
 [phoenix]: https://www.phoenix.com/
+[pc-startup]: https://github.com/vinibiavatti1/TuiCss/blob/6a021ecc2abb1fbe6da62bd370d1f2a764da1195/examples/pc-startup.html
+[tuicss-license]: https://github.com/vinibiavatti1/TuiCss/blob/6a021ecc2abb1fbe6da62bd370d1f2a764da1195/LICENSE.md
 [energy-star]: https://www.energystar.gov/
 [epa]: https://www.epa.gov/
