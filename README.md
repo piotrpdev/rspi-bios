@@ -12,7 +12,7 @@
 - [x] setup hot reloading for front and back end
 - [ ] optimize perf
 - [x] pre-commit lint, rust fmt, clippy, build check, etc.
-- [ ] switch from websockets back to sse
+- [x] switch from websockets back to sse
 - [ ] implement HTTPS/TLS
 - [ ] create Dockerfile
 - [ ] add compression layer
