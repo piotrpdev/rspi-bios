@@ -2,13 +2,11 @@
 import Ascii from "./lib/screens/ScanDisk.svelte";
 import Startup from "./lib/screens/Startup.svelte";
 
-// const socket = new WebSocket("ws://localhost:3000/ws");
-// socket.addEventListener("message", (event) => {
-// 	console.log("Message from server ", event.data);
-// 	// const code = document.createElement("code")
-// 	// code.innerText = event.data;
-// 	// document.querySelector("#messages")?.appendChild(code);
-// });
+// const eventSource = new EventSource('sse');
+
+// eventSource.onmessage = (event) => {
+//   console.log('Message from server ', event.data);
+// }
 
 // biome-ignore lint/style/useConst: binded var
 let isStartupFinished = false;

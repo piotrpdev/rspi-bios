@@ -19,6 +19,7 @@ notify = "6.1.1"
 notify-debouncer-mini = "0.4.1"
 sysinfo = "0.31.2"
 tokio = { version = "1.0", features = ["full"] }
+tokio-stream = { version = "0.1.15", features = ["sync"] }
 tokio-tungstenite = "0.23"
 tower = { version = "0.4", features = ["util"] }
 tower-http = { version = "0.5.0", features = ["fs", "trace"] }

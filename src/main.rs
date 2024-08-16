@@ -1,20 +1,20 @@
 use axum::{
-    extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
-        State,
-    },
-    response::IntoResponse,
+    extract::State,
+    response::{sse::Event, Sse},
     routing::get,
     Router,
 };
 use axum_extra::TypedHeader;
+use futures::stream::Stream;
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use sysinfo::System;
 use tokio::sync::{broadcast, Mutex};
+use tokio_stream::StreamExt as _;
 use tower_livereload::LiveReloadLayer;
 
 use std::{
+    convert::Infallible,
     net::SocketAddr,
     path::{Path, PathBuf},
 };
@@ -26,9 +26,6 @@ use tower_http::{
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-// allows to extract the IP of connecting user
-use axum::extract::connect_info::ConnectInfo;
-
 // Use of a mod or pub mod is not actually necessary.
 pub mod built_info {
     // The file has been placed there by the build script.
@@ -36,20 +33,19 @@ pub mod built_info {
 }
 
 const SYSTEM_REFRESH_PERIOD: Duration = Duration::from_secs(1);
-const PKG_VERSION: &str = built_info::PKG_VERSION;
 
 struct AppState {
-    system_tx: broadcast::Sender<Message>,
+    system_tx: broadcast::Sender<Event>,
     system: Mutex<System>,
 }
 
-async fn send_system_ws_messages(state: Arc<AppState>) {
+async fn send_system_messages(state: Arc<AppState>) {
     let mut interval = tokio::time::interval(SYSTEM_REFRESH_PERIOD);
     loop {
         interval.tick().await;
         let mut system = state.system.lock().await;
         system.refresh_all();
-        let event = Message::Text(format!("{system:?}"));
+        let event = Event::default().data(format!("{system:?}"));
         let _ = state.system_tx.send(event);
     }
 }
@@ -76,7 +72,7 @@ async fn main() {
     });
 
     // Spawn a task to send events
-    tokio::spawn(send_system_ws_messages(state.clone()));
+    tokio::spawn(send_system_messages(state.clone()));
 
     let livereload = LiveReloadLayer::new();
     let reloader = livereload.reloader();
@@ -85,7 +81,7 @@ async fn main() {
     // ? maybe use https://docs.rs/tower-default-headers/latest/tower_default_headers/ to add 'server: Axum' header
     let app = Router::new()
         .fallback_service(ServeDir::new(web_dir).append_index_html_on_directories(true))
-        .route("/ws", get(ws_handler))
+        .route("/sse", get(sse_handler))
         // logging so we can see whats going on
         .layer(
             TraceLayer::new_for_http()
@@ -121,75 +117,22 @@ async fn main() {
     .unwrap();
 }
 
-/// The handler for the HTTP request (this gets called when the HTTP GET lands at the start
-/// of websocket negotiation). After this completes, the actual switching from HTTP to
-/// websocket protocol will occur.
-/// This is the last point where we can extract TCP/IP metadata such as IP address of the client
-/// as well as things from HTTP headers such as user-agent of the browser etc.
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    user_agent: Option<TypedHeader<headers::UserAgent>>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+async fn sse_handler(
+    TypedHeader(user_agent): TypedHeader<headers::UserAgent>,
     state: State<Arc<AppState>>,
-) -> impl IntoResponse {
-    let user_agent = if let Some(TypedHeader(user_agent)) = user_agent {
-        user_agent.to_string()
-    } else {
-        String::from("Unknown browser")
-    };
-    println!("`{user_agent}` at {addr} connected.");
-    // finalize the upgrade process by returning upgrade callback.
-    // we can customize the callback by sending additional info such as address.
-    ws.on_upgrade(move |socket| handle_socket(socket, addr, state))
-}
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let system_rx = state.system_tx.subscribe();
 
-/// Actual websocket statemachine (one will be spawned per connection)
-async fn handle_socket(mut socket: WebSocket, who: SocketAddr, State(state): State<Arc<AppState>>) {
-    // Subscribe to the broadcast channel
-    let mut rx = state.system_tx.subscribe();
+    println!("`{}` connected", user_agent.as_str());
 
-    // send a ping (unsupported by some browsers) just to kick things off and get a response
-    if socket
-        .send(Message::Text(PKG_VERSION.to_owned()))
-        .await
-        .is_ok()
-    {
-        println!("Pinged {who}...");
-    } else {
-        println!("Could not send ping {who}!");
-        // no Error here since the only thing we can do is to close the connection.
-        // If we can not send messages, there is no way to salvage the statemachine anyway.
-        return;
-    }
+    // wrap using tokio_stream::wrappers::BroadcastStream
+    let system_stream = tokio_stream::wrappers::BroadcastStream::new(system_rx)
+        .map(|msg| msg.unwrap_or_else(|_| Event::default().data("error")))
+        .map(Ok);
 
-    if socket.send(Message::Ping(vec![1, 2, 3])).await.is_ok() {
-        println!("Sent built info {who}...");
-    } else {
-        println!("Could not send built info {who}!");
-        return;
-    }
-
-    loop {
-        match rx.recv().await {
-            Ok(event) => {
-                if socket.send(event).await.is_ok() {
-                    println!("Sent message to {who}...");
-                } else {
-                    println!("Could not send message to {who}!");
-                    break;
-                }
-            }
-            Err(broadcast::error::RecvError::Closed) => {
-                println!("Channel closed for {who}!");
-                break;
-            }
-            Err(broadcast::error::RecvError::Lagged(_)) => {
-                println!("Channel lagged for {who}!");
-                break;
-            }
-        }
-    }
-
-    // returning from the handler closes the websocket connection
-    println!("Websocket context {who} destroyed");
+    Sse::new(system_stream).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(Duration::from_secs(1))
+            .text("keep-alive-text"),
+    )
 }
