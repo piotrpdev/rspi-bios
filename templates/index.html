@@ -74,14 +74,14 @@
         >
             <div id="session-0">
                 <img
-                    src="https://raw.githubusercontent.com/vinibiavatti1/TuiCss/master/examples/resources/pcstartup1.png"
+                    src="/award_software_logo.png"
                     width="40px"
                     height="40px"
                     style="float: left"
                     alt="Award logo"
                 />
                 <img
-                    src="https://raw.githubusercontent.com/vinibiavatti1/TuiCss/master/examples/resources/pcstartup2.png"
+                    src="/energy_star_logo.png"
                     width="200px"
                     height="150px"
                     style="float: right"
@@ -287,7 +287,7 @@
         <div
             id="scandisk"
             class="tui-screen-1024-768 bordered blue-168 cyan-255-text"
-            style="padding: 40px; visibility: hidden"
+            style="padding: 40px; display: none"
         >
             <span>{{ model_name }}</span>
             <br />
@@ -409,7 +409,7 @@
                 const startup = document.getElementById("startup");
                 const scandisk = document.getElementById("scandisk");
                 check(startup).style.display = "none";
-                check(scandisk).style.visibility = "visible";
+                check(scandisk).style.display = "block";
             }
 
             async function memoryTest() {
