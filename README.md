@@ -22,6 +22,7 @@
 - [ ] add graceful tls shutdown
 - [ ] maybe handle HEAD
 - [x] show/hide pages in screens
+- [ ] maybe move `web/` contents to root level i.e. vite and package.json in root
 
 ## Features
 

@@ -21,13 +21,13 @@ repos:
           - id: markdownlint-cli2
     - repo: local
       hooks:
-          # - id: local-web-lint
-          #   name: web lint:write
-          #   entry: npm run --prefix ./web/ lint:write
-          #   language: system
-          #   types: [text]
-          #   files: "\\.(jsx?|tsx?|c(js|ts)|m(js|ts)|d\\.(ts|cts|mts)|jsonc?|css)$"
-          #   pass_filenames: false
+          - id: html-lint
+            name: html-lint
+            entry: npm run format
+            language: system
+            types: [text]
+            files: "\\.html$"
+            pass_filenames: false
           - id: fmt
             name: fmt
             entry: cargo fmt

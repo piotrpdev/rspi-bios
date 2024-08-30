@@ -1,0 +1,31 @@
+{
+	"name": "rspi-bios",
+	"private": true,
+	"license": "GPL-3.0",
+	"author": "Piotr Placzek <piotrpdev@gmail.com>",
+	"version": "0.0.0",
+	"type": "module",
+	"engines": {
+		"npm": ">=10.0.0",
+		"node": ">=20.0.0"
+	},
+	"scripts": {
+		"lint": "npx eslint assets/",
+		"lint:fix": "npm run lint -- --fix",
+		"prettier": "npx prettier assets/ --check",
+		"prettier:fix": "npm run prettier -- --write",
+		"check": "npm run lint && prettier",
+		"format": "npm run prettier:fix && npm run lint:fix"
+	},
+	"devDependencies": {
+		"@eslint/js": "^8.57.0",
+		"@html-eslint/eslint-plugin": "^0.26.0",
+		"@html-eslint/parser": "^0.26.0",
+		"eslint": "^8.57.0",
+		"eslint-config-prettier": "^8.10.0",
+		"eslint-plugin-html": "^8.1.1",
+		"eslint-plugin-prettier": "^5.2.1",
+		"globals": "^15.9.0",
+		"prettier": "3.3.3"
+	}
+}
