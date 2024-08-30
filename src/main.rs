@@ -60,7 +60,7 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let web_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("web/dist/");
+    let web_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/");
 
     // Create a new broadcast channel
     let (tx, _rx) = broadcast::channel(100);
@@ -101,7 +101,7 @@ async fn main() {
 
     debouncer
         .watcher()
-        .watch(Path::new("./web/dist"), RecursiveMode::Recursive)
+        .watch(Path::new("./assets"), RecursiveMode::Recursive)
         .unwrap();
 
     // run it with hyper
