@@ -12,7 +12,6 @@
 - [ ] create Dockerfile
 - [ ] add compression layer
 - [ ] add CORS
-- [ ] add 404
 - [ ] add proper error handling
 - [ ] add graceful tls shutdown
 

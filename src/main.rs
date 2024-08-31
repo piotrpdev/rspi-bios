@@ -1,6 +1,9 @@
+use std::path::PathBuf;
 use std::{convert::Infallible, net::SocketAddr};
 use std::{sync::Arc, time::Duration};
 
+use axum::response::Redirect;
+use axum_server::tls_rustls::RustlsConfig;
 use tokio::sync::{broadcast, Mutex};
 use tokio_stream::{Stream, StreamExt as _};
 
@@ -56,6 +59,9 @@ async fn send_system_messages(state: Arc<AppState>) {
 
 #[tokio::main]
 async fn main() {
+    let port_arg = std::env::args().nth(1).unwrap_or("3000".to_string());
+    let port: u16 = port_arg.parse().unwrap_or(3000);
+
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
@@ -68,6 +74,18 @@ async fn main() {
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
+
+    // configure certificate and private key used by https
+    let config = RustlsConfig::from_pem_file(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("certs")
+            .join("cert.pem"),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("certs")
+            .join("key.pem"),
+    )
+    .await
+    .unwrap();
 
     // Create a new broadcast channel
     let (tx, _rx) = broadcast::channel(100);
@@ -87,6 +105,7 @@ async fn main() {
     // build our application with some routes
     // ? maybe use https://docs.rs/tower-default-headers/latest/tower_default_headers/ to add 'server: Axum' header
     let app = Router::new()
+        .fallback(get(|| async { Redirect::permanent("/") }))
         .route("/", get(index_handler))
         .route("/sse", get(sse_handler))
         // logging so we can see whats going on
@@ -96,14 +115,12 @@ async fn main() {
         )
         .with_state(state);
 
-    // run it with hyper
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .await
-    .unwrap();
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    println!("Starting HTTPS server at {addr}");
+    axum_server::bind_rustls(addr, config)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
 }
 
 async fn sse_handler(
