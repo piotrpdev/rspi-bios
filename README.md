@@ -7,13 +7,10 @@
 - [ ] in release, derive paths from path of current exe
   - [ ] see <https://doc.rust-lang.org/stable/std/env/fn.current_exe.html>
   - [ ] maybe let user pass cmd arg with path(s)
-- [ ] remove unused features and packages
-- [ ] implement HTTPS/TLS
 - [ ] create Dockerfile
 - [ ] add compression layer
 - [ ] add CORS
 - [ ] add proper error handling
-- [ ] add graceful tls shutdown
 
 ## Features
 

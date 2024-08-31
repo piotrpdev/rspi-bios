@@ -4,7 +4,9 @@ use std::{sync::Arc, time::Duration};
 
 use axum::response::Redirect;
 use axum_server::tls_rustls::RustlsConfig;
+use tokio::signal;
 use tokio::sync::{broadcast, Mutex};
+use tokio::time::sleep;
 use tokio_stream::{Stream, StreamExt as _};
 
 use askama::Template;
@@ -99,6 +101,11 @@ async fn main() {
         networks: Mutex::new(Networks::new_with_refreshed_list()),
     });
 
+    // Create a handle for our TLS server so the shutdown signal can all shutdown
+    let handle = axum_server::Handle::new();
+    // Spawn a task to gracefully shutdown server.
+    tokio::spawn(graceful_shutdown(handle.clone()));
+
     // Spawn a task to send events
     tokio::spawn(send_system_messages(state.clone()));
 
@@ -116,11 +123,52 @@ async fn main() {
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    println!("Starting HTTPS server at {addr}");
+    tracing::info!("Starting HTTPS server at {addr}");
     axum_server::bind_rustls(addr, config)
+        .handle(handle)
         .serve(app.into_make_service())
         .await
         .unwrap();
+
+    tracing::info!("Server has been shut down.");
+}
+
+// https://github.com/tokio-rs/axum/blob/1ac617a1b540e8523347f5ee889d65cad9a45ec4/examples/tls-graceful-shutdown/src/main.rs
+// https://github.com/programatik29/axum-server/blob/d48b1a931909d156177bc87684910769e67be905/examples/graceful_shutdown.rs
+async fn graceful_shutdown(handle: axum_server::Handle) {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        () = ctrl_c => {},
+        () = terminate => {},
+    }
+
+    tracing::info!("Received termination signal, shutting down...");
+    // Refuses new connections
+    // 10 secs is how long docker will wait to force shutdown
+    handle.graceful_shutdown(Some(Duration::from_secs(10)));
+
+    // Print alive connection count every second.
+    loop {
+        sleep(Duration::from_secs(1)).await;
+
+        tracing::debug!("alive connections: {}", handle.connection_count());
+    }
 }
 
 async fn sse_handler(
