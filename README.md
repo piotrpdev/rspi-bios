@@ -4,15 +4,10 @@
 
 ## TODO
 
-- [ ] send built info
-- [ ] send versions of the CI
-- [ ] send versions of rust, npm, etc. use npm built equivalent
-- [ ] highlight rust/axum process in the list of processes
-- [x] switch to using JS framework for the frontend
-- [x] setup hot reloading for front and back end
-- [ ] optimize perf
-- [x] pre-commit lint, rust fmt, clippy, build check, etc.
-- [x] switch from websockets back to sse
+- [ ] in release, derive paths from path of current exe
+  - [ ] see <https://doc.rust-lang.org/stable/std/env/fn.current_exe.html>
+  - [ ] maybe let user pass cmd arg with path(s)
+- [ ] remove unused features and packages
 - [ ] implement HTTPS/TLS
 - [ ] create Dockerfile
 - [ ] add compression layer
@@ -20,9 +15,6 @@
 - [ ] add 404
 - [ ] add proper error handling
 - [ ] add graceful tls shutdown
-- [ ] maybe handle HEAD
-- [x] show/hide pages in screens
-- [ ] maybe move `web/` contents to root level i.e. vite and package.json in root
 
 ## Features
 

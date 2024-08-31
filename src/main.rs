@@ -1,3 +1,12 @@
+use std::{convert::Infallible, net::SocketAddr};
+use std::{sync::Arc, time::Duration};
+
+use chrono::Datelike;
+
+use futures::stream::Stream;
+use tokio::sync::{broadcast, Mutex};
+use tokio_stream::StreamExt as _;
+
 use askama::Template;
 use axum::{
     extract::State,
@@ -6,28 +15,11 @@ use axum::{
     routing::get,
     Router,
 };
-use axum_extra::TypedHeader;
-use built::chrono::{self, Datelike};
-use futures::stream::Stream;
-use sysinfo::{Disks, Networks, ProcessesToUpdate, System};
-use tokio::sync::{broadcast, Mutex};
-use tokio_stream::StreamExt as _;
-use tower_livereload::LiveReloadLayer;
-
-use std::{convert::Infallible, net::SocketAddr, path::PathBuf};
-use std::{sync::Arc, time::Duration};
-use tower_http::{
-    services::ServeDir,
-    trace::{DefaultMakeSpan, TraceLayer},
-};
-
+use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-// Use of a mod or pub mod is not actually necessary.
-pub mod built_info {
-    // The file has been placed there by the build script.
-    include!(concat!(env!("OUT_DIR"), "/built.rs"));
-}
+use sysinfo::{Disks, Networks, ProcessesToUpdate, System};
+use tower_livereload::LiveReloadLayer;
 
 const SYSTEM_REFRESH_PERIOD: Duration = Duration::from_secs(5);
 
@@ -70,13 +62,16 @@ async fn send_system_messages(state: Arc<AppState>) {
 async fn main() {
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "example_websockets=debug,tower_http=debug".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                format!(
+                    "{}=debug,tower_http=debug,axum::rejection=trace",
+                    env!("CARGO_CRATE_NAME")
+                )
+                .into()
+            }),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
-
-    let assets_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/");
 
     // Create a new broadcast channel
     let (tx, _rx) = broadcast::channel(100);
@@ -99,7 +94,6 @@ async fn main() {
     // build our application with some routes
     // ? maybe use https://docs.rs/tower-default-headers/latest/tower_default_headers/ to add 'server: Axum' header
     let app = Router::new()
-        .fallback_service(ServeDir::new(assets_dir))
         .route("/", get(index_handler))
         .route("/sse", get(sse_handler))
         // logging so we can see whats going on
@@ -122,12 +116,9 @@ async fn main() {
 }
 
 async fn sse_handler(
-    TypedHeader(user_agent): TypedHeader<headers::UserAgent>,
     state: State<Arc<AppState>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let system_rx = state.system_tx.subscribe();
-
-    println!("`{}` connected", user_agent.as_str());
 
     // wrap using tokio_stream::wrappers::BroadcastStream
     let system_stream = tokio_stream::wrappers::BroadcastStream::new(system_rx)

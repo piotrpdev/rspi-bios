@@ -10,9 +10,9 @@
 		"node": ">=20.0.0"
 	},
 	"scripts": {
-		"lint": "npx eslint templates/",
+		"lint": "npx eslint index.html",
 		"lint:fix": "npm run lint -- --fix",
-		"prettier": "npx prettier templates/ --check",
+		"prettier": "npx prettier index.html --check",
 		"prettier:fix": "npm run prettier -- --write",
 		"check": "npm run lint && prettier",
 		"format": "npm run prettier:fix && npm run lint:fix"
