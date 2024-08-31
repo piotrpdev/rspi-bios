@@ -1,11 +1,8 @@
 use std::{convert::Infallible, net::SocketAddr};
 use std::{sync::Arc, time::Duration};
 
-use chrono::Datelike;
-
-use futures::stream::Stream;
 use tokio::sync::{broadcast, Mutex};
-use tokio_stream::StreamExt as _;
+use tokio_stream::{Stream, StreamExt as _};
 
 use askama::Template;
 use axum::{
@@ -19,7 +16,6 @@ use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use sysinfo::{Disks, Networks, ProcessesToUpdate, System};
-use tower_livereload::LiveReloadLayer;
 
 const SYSTEM_REFRESH_PERIOD: Duration = Duration::from_secs(5);
 
@@ -88,9 +84,6 @@ async fn main() {
     // Spawn a task to send events
     tokio::spawn(send_system_messages(state.clone()));
 
-    let livereload = LiveReloadLayer::new();
-    let _reloader = livereload.reloader();
-
     // build our application with some routes
     // ? maybe use https://docs.rs/tower-default-headers/latest/tower_default_headers/ to add 'server: Axum' header
     let app = Router::new()
@@ -101,12 +94,10 @@ async fn main() {
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::default().include_headers(true)),
         )
-        .with_state(state)
-        .layer(livereload);
+        .with_state(state);
 
     // run it with hyper
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    tracing::debug!("listening on {}", listener.local_addr().unwrap());
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
@@ -149,7 +140,6 @@ async fn index_handler(state: State<Arc<AppState>>) -> impl IntoResponse {
 
     let template = IndexTemplate {
         kernel_version: state.kernel_version.lock().await.to_string(), // 6.6.31+rpt-rpi-v8
-        current_year: chrono::Utc::now().year().to_string(),
         model_name: "Raspberry Pi 4 Model B Rev 1.4".to_owned(),
         cpu_brand: cpu_brand.to_string(), // Cortex-A72
         cpu_brand_short: cpu_brand[0..cpu_brand.len() - 2].to_string().to_uppercase(), // CORTEX-A
@@ -172,7 +162,6 @@ async fn index_handler(state: State<Arc<AppState>>) -> impl IntoResponse {
 #[template(path = "index.html")]
 struct IndexTemplate {
     kernel_version: String,
-    current_year: String,
     model_name: String,
     cpu_brand: String,
     cpu_brand_short: String,

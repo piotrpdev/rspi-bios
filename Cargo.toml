@@ -6,23 +6,13 @@ edition = "2021"
 repository = "https://github.com/piotrpdev/rspi-bios"
 license = "GPL-3.0"
 publish = false
+rust-version = "1.74"
 
 [dependencies]
-askama = "0.12.1"
-axum = { version = "0.7.5" }
-axum-extra = { version = "0.9.3", features = ["typed-header"] }
-chrono = "0.4.38"
-futures = "0.3"
-futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
-headers = "0.4"
-notify = "6.1.1"
-notify-debouncer-mini = "0.4.1"
-sysinfo = "0.31.2"
-tokio = { version = "1.0", features = ["full"] }
+askama = { version = "0.12.1", default-features = false }
+axum = { version = "0.7.5", default-features = false, features = ["tokio", "http1"] }
+sysinfo = { version = "0.31.2", default-features = false, features = ["disk", "network", "system", "multithread"] }
+tokio = { version = "1.0", features = ["rt-multi-thread"] }
 tokio-stream = { version = "0.1.15", features = ["sync"] }
-tokio-tungstenite = "0.23"
-tower = { version = "0.4", features = ["util"] }
-tower-http = { version = "0.5.0", features = ["fs", "trace"] }
-tower-livereload = "0.9.3"
-tracing = "0.1"
+tower-http = { version = "0.5.0", features = ["trace"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

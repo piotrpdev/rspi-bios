@@ -29,22 +29,24 @@
 
 ## Usage
 
-### Release
+### Build
 
 ```bash
-NODE_ENV=production npm run --prefix ./web/ build && cargo build --release
+# Install GCC for ARM (Ubuntu 24.04 LTS)
+sudo apt-get install gcc-arm-linux-gnueabihf
+
+# Add target
+rustup target add armv7-unknown-linux-gnueabihf
+
+# Build
+cargo build --release --target=armv7-unknown-linux-gnueabihf
 ```
 
 ### Development
 
-> [!NOTE]
-> You might need to check `Disable cache` in Chrome DevTools to avoid `404`s.
-
 ```bash
-# Listen for ./web/ file changes and rebuild
-npm run --prefix ./web/ build:watch
-# Listen for ./src/ file changes and rebuild (run in another terminal)
-cargo-watch --watch src -x run
+cargo install cargo-watch
+cargo-watch --watch src --watch templates -x run
 ```
 
 ## License
