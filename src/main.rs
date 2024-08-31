@@ -9,9 +9,7 @@ use axum::{
 use axum_extra::TypedHeader;
 use built::chrono::{self, Datelike};
 use futures::stream::Stream;
-// use notify::RecursiveMode;
-// use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
-use sysinfo::{Disks, System};
+use sysinfo::{Disks, Networks, ProcessesToUpdate, System};
 use tokio::sync::{broadcast, Mutex};
 use tokio_stream::StreamExt as _;
 use tower_livereload::LiveReloadLayer;
@@ -31,20 +29,39 @@ pub mod built_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 }
 
-const SYSTEM_REFRESH_PERIOD: Duration = Duration::from_secs(1);
+const SYSTEM_REFRESH_PERIOD: Duration = Duration::from_secs(5);
 
 struct AppState {
     system_tx: broadcast::Sender<Event>,
     system: Mutex<System>,
+    kernel_version: Mutex<String>,
+    disks: Mutex<Disks>,
+    networks: Mutex<Networks>,
 }
 
 async fn send_system_messages(state: Arc<AppState>) {
     let mut interval = tokio::time::interval(SYSTEM_REFRESH_PERIOD);
     loop {
         interval.tick().await;
+
+        let uptime = System::uptime();
+
         let mut system = state.system.lock().await;
-        system.refresh_all();
-        let event = Event::default().data(format!("{system:?}"));
+        system.refresh_processes(ProcessesToUpdate::All);
+        let process_count = system.processes().len();
+
+        let mut networks = state.networks.lock().await;
+        networks.refresh();
+        let mut total_rx = 0;
+        let mut total_tx = 0;
+        for (_interface_name, data) in networks.iter() {
+            total_rx += data.total_received();
+            total_tx += data.total_transmitted();
+        }
+
+        let event = Event::default().data(format!(
+            "{total_rx:?}, {total_tx:?}, {process_count:?}, {uptime:?}"
+        ));
         let _ = state.system_tx.send(event);
     }
 }
@@ -68,6 +85,9 @@ async fn main() {
     let state = Arc::new(AppState {
         system_tx: tx,
         system: Mutex::new(System::new_all()),
+        kernel_version: Mutex::new(System::kernel_version().unwrap_or("v6.1".to_owned())),
+        disks: Mutex::new(Disks::new_with_refreshed_list()),
+        networks: Mutex::new(Networks::new_with_refreshed_list()),
     });
 
     // Spawn a task to send events
@@ -89,20 +109,6 @@ async fn main() {
         )
         .with_state(state)
         .layer(livereload);
-
-    // let mut debouncer = new_debouncer(
-    //     Duration::from_millis(100),
-    //     move |res: DebounceEventResult| match res {
-    //         Ok(_) => reloader.reload(),
-    //         Err(e) => tracing::error!("Watcher (debouncer) Error {:?}", e),
-    //     },
-    // )
-    // .unwrap();
-
-    // debouncer
-    //     .watcher()
-    //     .watch(Path::new("./templates"), RecursiveMode::Recursive)
-    //     .unwrap();
 
     // run it with hyper
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
@@ -140,10 +146,18 @@ async fn index_handler(state: State<Arc<AppState>>) -> impl IntoResponse {
     // TODO: Get model name from `tail -n 1 /proc/cpuinfo | cut -d':' -f2 | cut -c2-`
     let system = state.system.lock().await;
     let cpu_brand = system.cpus()[0].brand();
-    let disks = Disks::new_with_refreshed_list();
+    let disks = state.disks.lock().await;
+    let networks = state.networks.lock().await;
+
+    let mut total_rx = 0;
+    let mut total_tx = 0;
+    for (_interface_name, data) in networks.iter() {
+        total_rx += data.total_received();
+        total_tx += data.total_transmitted();
+    }
 
     let template = IndexTemplate {
-        kernel_version: System::kernel_version().unwrap_or("v6.1".to_owned()), // 6.6.31+rpt-rpi-v8
+        kernel_version: state.kernel_version.lock().await.to_string(), // 6.6.31+rpt-rpi-v8
         current_year: chrono::Utc::now().year().to_string(),
         model_name: "Raspberry Pi 4 Model B Rev 1.4".to_owned(),
         cpu_brand: cpu_brand.to_string(), // Cortex-A72
@@ -154,7 +168,12 @@ async fn index_handler(state: State<Arc<AppState>>) -> impl IntoResponse {
         primary_disk_size: (disks[0].total_space() / 1_000_000_000 + 7) & !7, // 32 GB
         total_memory: system.total_memory(), // 4 GB
         rounded_memory: (system.total_memory() / 1_000_000_000 + 3) & !3, // 4 GB
+        uptime: System::uptime().to_string(),
+        process_count: system.processes().len(),
+        rx: total_rx,
+        tx: total_tx,
     };
+
     HtmlTemplate(template)
 }
 
@@ -172,6 +191,10 @@ struct IndexTemplate {
     primary_disk_size: u64,
     total_memory: u64,
     rounded_memory: u64,
+    uptime: String,
+    process_count: usize,
+    rx: u64,
+    tx: u64,
 }
 
 struct HtmlTemplate<T>(T);

@@ -1,15 +1,37 @@
 <!doctype html>
 <html lang="en">
     <head>
-        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-
+        <meta charset="UTF-8" />
         <title>Raspberry Pi BIOS</title>
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="preconnect" href="https://cdn.jsdelivr.net/" />
+        <link
+            rel="preload"
+            href="https://cdn.jsdelivr.net/npm/tuicss@2.1.2/dist/images/bg-blue-black.png"
+            as="image"
+        />
+        <link
+            rel="preload"
+            href="https://cdn.jsdelivr.net/npm/tuicss@2.1.2/examples/resources/pcstartup1.png"
+            as="image"
+        />
+        <link
+            rel="preload"
+            href="https://cdn.jsdelivr.net/npm/tuicss@2.1.2/examples/resources/pcstartup2.png"
+            as="image"
+        />
         <script src="https://cdn.jsdelivr.net/npm/tuicss@2.1.2/dist/tuicss.min.js"></script>
         <link
             rel="stylesheet"
             href="https://cdn.jsdelivr.net/npm/tuicss@2.1.2/dist/tuicss.min.css"
         />
         <style>
+            body {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+            }
             .scandisk-button {
                 background-color: rgb(80, 80, 80);
                 color: rgb(168, 168, 168);
@@ -64,9 +86,21 @@
             #boot-table tbody tr td:nth-child(3) {
                 max-width: 180px;
             } */
+            #scandisk-header {
+                display: flex;
+                flex-direction: row;
+                justify-content: space-between;
+            }
+
+            #scandisk-subheader {
+                display: flex;
+                flex-direction: row;
+                justify-content: flex-end;
+                gap: 18px;
+            }
         </style>
     </head>
-    <body style="line-height: 1.1em">
+    <body class="tui-bg-blue-black" style="line-height: 1.1em">
         <div
             id="startup"
             class="tui-screen-1024-768 black white-text"
@@ -74,14 +108,14 @@
         >
             <div id="session-0">
                 <img
-                    src="/award_software_logo.png"
+                    src="https://cdn.jsdelivr.net/npm/tuicss@2.1.2/examples/resources/pcstartup1.png"
                     width="40px"
                     height="40px"
                     style="float: left"
                     alt="Award logo"
                 />
                 <img
-                    src="/energy_star_logo.png"
+                    src="https://cdn.jsdelivr.net/npm/tuicss@2.1.2/examples/resources/pcstartup2.png"
                     width="200px"
                     height="150px"
                     style="float: right"
@@ -289,11 +323,16 @@
             class="tui-screen-1024-768 bordered blue-168 cyan-255-text"
             style="padding: 40px; display: none"
         >
-            <span>{{ model_name }}</span>
-            <br />
+            <div id="scandisk-header">
+                <span>{{ model_name }}</span>
+                <span id="uptime">Uptime: 0 hours</span>
+            </div>
+            <div id="scandisk-subheader">
+                <span id="process_count">Process Count: 0</span>
+                <span id="rx_tx">RX/TX: 0MB/0MB</span>
+            </div>
             <br />
             <span class="tui-divider cyan-255-border"></span>
-            <br />
             <br />
             <div
                 style="
@@ -348,9 +387,6 @@
             <!-- eslint-disable-next-line prettier/prettier -->
             {{ primary_disk_size }}GB Micro SD Card
             <br />
-            <!-- <span class="yellow-255-text">G</span>PU.....: Broadcom VideoCore VI -->
-            <span class="yellow-255-text">E</span>thernet..: Gigabit Ethernet
-            <br />
             <span class="yellow-255-text">W</span>IFI......: 2.4 GHz and 5.0 GHz
             IEEE 802.11ac wireless, Bluetooth 5.0, BLE
             <br />
@@ -360,34 +396,28 @@
             <span class="yellow-255-text">P</span>oE.......: Power over Ethernet
             (PoE) enabled (requires separate PoE HAT)
             <br />
-            <!-- <span class="yellow-255-text">D</span>isplay.: 2 × micro HDMI ports (up to 4kp60 supported) -->
-            <!-- <span class="yellow-255-text">M</span>ultimedia: H.265 (4kp60 decode), H264 (1080p60 decode, 1080p30 encode) -->
-            <!-- <span class="yellow-255-text">U</span>SB......: 2 × USB 3.0 ports, 2 x USB 2.0 Ports -->
-            <!-- <span class="yellow-255-text">G</span>PIO.....: Standard 40-pin GPIO header (fully backwards-compatible with previous boards) -->
-            <!-- <span class="yellow-255-text">C</span>amera...: MIPI CSI camera port -->
-            <!-- <span class="yellow-255-text">D</span>SI display port, MIPI DSI display port, 4 Pole stereo output and composite video port -->
-            <!-- <span class="yellow-255-text">D</span>imensions: 88 × 58 × 19.5mm, 46g -->
-            <span class="yellow-255-text">T</span>emp......: 0 – 50 degrees C
-            ambient
-            <br />
             <span class="yellow-255-text">O</span>S........: Raspberry Pi OS
             (32-bit) / Ubuntu 20.04 LTS (32-bit)
-            <br />
-            <!-- <span class="yellow-255-text">S</span>oftware..: Scratch, Python, C, C++, Java, Ruby, Perl, PHP, Mathematica, Node-RED -->
-            <span class="yellow-255-text">S</span>upport...:
-            https://www.raspberrypi.org/forums/
-            <br />
-            <span class="yellow-255-text">W</span>arranty..: 1 Year
         </div>
         <script>
             // @ts-check
             // https://code.visualstudio.com/docs/nodejs/working-with-javascript#_intellisense
             "use strict";
 
-            // const eventSource = new EventSource('sse');
-            // eventSource.onmessage = (event) => {
-            //   console.log('Message from server ', event.data);
-            // }
+            const eventSource = new EventSource("sse");
+
+            /**
+             * @param {MessageEvent<String>} event
+             */
+            eventSource.onmessage = (event) => {
+                const [rx, tx, process_count, uptime] = event.data.split(", ");
+                // prettier-ignore
+                check(document.getElementById("uptime")).innerHTML = `Uptime: ${Math.round(parseInt(uptime) / 60 / 60)} hours`;
+                // prettier-ignore
+                check(document.getElementById("process_count")).innerHTML = `Process Count: ${process_count}`;
+                // prettier-ignore
+                check(document.getElementById("rx_tx")).innerHTML = `RX/TX: ${Math.round(parseInt(rx) / 1_000_000)}MB/${Math.round(parseInt(tx) / 1_000_000)}MB`;
+            };
 
             function timeout(ms) {
                 return new Promise((resolve) => setTimeout(resolve, ms));
@@ -431,6 +461,16 @@
             }
 
             window.onload = async function () {
+                // prettier-ignore
+                check(document.getElementById("uptime")).innerHTML =
+                    `Uptime: ${Math.round(parseInt("{{ uptime }}") / 60 / 60)} hours`;
+                // prettier-ignore
+                check(document.getElementById("process_count")).innerHTML =
+                    `Process Count: ${parseInt("{{ process_count }}")}`;
+                // prettier-ignore
+                check(document.getElementById("rx_tx")).innerHTML =
+                    `RX/TX: ${Math.round(parseInt("{{ rx }}") / 1_000_000)}MB/${Math.round(parseInt("{{ tx }}") / 1_000_000)}MB`;
+
                 await memoryTest();
                 await timeout(300);
                 showSession("session-1");
