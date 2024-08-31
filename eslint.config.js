@@ -10,7 +10,7 @@ export default [
     eslintPluginPrettierRecommended,
     {
         ...html.configs["flat/recommended"],
-        files: ["templates/**/*.html"],
+        files: ["index.html"],
         plugins: {
             ...html.configs["flat/recommended"].plugins,
             ...eslintPluginPrettierRecommended.plugins,
