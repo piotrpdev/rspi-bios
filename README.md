@@ -2,16 +2,6 @@
 
 [Raspberry Pi][raspberry] dashboard that mimics the style of old [BIOS][bios] designs.
 
-## TODO
-
-- [ ] in release, derive paths from path of current exe
-  - [ ] see <https://doc.rust-lang.org/stable/std/env/fn.current_exe.html>
-  - [ ] maybe let user pass cmd arg with path(s)
-- [ ] create Dockerfile
-- [ ] add compression layer
-- [ ] add CORS
-- [ ] add proper error handling
-
 ## Features
 
 <!-- TODO: Add more features and packages/crates -->
@@ -25,7 +15,7 @@
 
 ## Usage
 
-### Build
+### Cross-compile for Raspberry Pi
 
 ```bash
 # Install GCC for ARM (Ubuntu 24.04 LTS)

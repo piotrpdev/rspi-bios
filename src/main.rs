@@ -1,9 +1,9 @@
+use std::env;
 use std::path::PathBuf;
 use std::{convert::Infallible, net::SocketAddr};
 use std::{sync::Arc, time::Duration};
 
 use axum::response::Redirect;
-use axum_server::tls_rustls::RustlsConfig;
 use tokio::signal;
 use tokio::sync::{broadcast, Mutex};
 use tokio::time::sleep;
@@ -61,6 +61,7 @@ async fn send_system_messages(state: Arc<AppState>) {
 
 #[tokio::main]
 async fn main() {
+    let exe_path = env::current_exe().expect("Could not get path of exe");
     let port_arg = std::env::args().nth(1).unwrap_or("3000".to_string());
     let port: u16 = port_arg.parse().unwrap_or(3000);
 
@@ -77,17 +78,25 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    // configure certificate and private key used by https
-    let config = RustlsConfig::from_pem_file(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("certs")
-            .join("cert.pem"),
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("certs")
-            .join("key.pem"),
-    )
-    .await
-    .unwrap();
+    let mut certs_path;
+
+    if cfg!(debug_assertions) {
+        certs_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        certs_path.push("certs");
+    } else {
+        certs_path = exe_path;
+        certs_path.pop();
+        certs_path.push("certs");
+    }
+
+    tracing::info!("Loading TLS .pem files from {certs_path:?}");
+    // // configure certificate and private key used by https
+    // let config = RustlsConfig::from_pem_file(
+    //     certs_path.join("cert.pem"),
+    //     certs_path.join("key.pem"),
+    // )
+    // .await
+    // .unwrap();
 
     // Create a new broadcast channel
     let (tx, _rx) = broadcast::channel(100);
@@ -124,7 +133,7 @@ async fn main() {
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!("Starting HTTPS server at {addr}");
-    axum_server::bind_rustls(addr, config)
+    axum_server::bind(addr)
         .handle(handle)
         .serve(app.into_make_service())
         .await
