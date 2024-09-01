@@ -1,0 +1,19 @@
+# Put me in /lib/systemd/system/
+[Unit]
+Description=Raspberry Pi dashboard that mimics the style of old BIOS designs.
+After=network.target
+Wants=network-online.target systemd-networkd-wait-online.service
+
+StartLimitIntervalSec=500
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=piotrpdev
+WorkingDirectory=/home/piotrpdev/rspi-bios
+ExecStart=/home/piotrpdev/rspi-bios/rspi-bios 443
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
