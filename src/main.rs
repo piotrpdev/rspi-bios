@@ -1,4 +1,5 @@
 use std::env;
+use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::{convert::Infallible, net::SocketAddr};
 use std::{sync::Arc, time::Duration};
@@ -66,6 +67,23 @@ async fn main() {
     let port_arg = std::env::args().nth(1).unwrap_or("3000".to_string());
     let port: u16 = port_arg.parse().unwrap_or(3000);
 
+    let mut log_path;
+
+    if cfg!(debug_assertions) {
+        log_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        log_path.push("debug.log");
+    } else {
+        log_path = exe_path.clone();
+        log_path.pop();
+        log_path.push("debug.log");
+    }
+
+    let log_file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(log_path)
+        .expect("Could not open ./debug.log");
+
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
@@ -77,6 +95,11 @@ async fn main() {
             }),
         )
         .with(tracing_subscriber::fmt::layer())
+        .with(
+            tracing_subscriber::fmt::layer()
+                .json()
+                .with_writer(log_file),
+        )
         .init();
 
     let mut certs_path;
@@ -85,7 +108,7 @@ async fn main() {
         certs_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         certs_path.push("certs");
     } else {
-        certs_path = exe_path;
+        certs_path = exe_path.clone();
         certs_path.pop();
         certs_path.push("certs");
     }
@@ -184,7 +207,6 @@ async fn sse_handler(
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let system_rx = state.system_tx.subscribe();
 
-    // wrap using tokio_stream::wrappers::BroadcastStream
     let system_stream = tokio_stream::wrappers::BroadcastStream::new(system_rx)
         .map(|msg| msg.unwrap_or_else(|_| Event::default().data("error")))
         .map(Ok);
@@ -197,7 +219,6 @@ async fn sse_handler(
 }
 
 async fn index_handler(state: State<Arc<AppState>>) -> impl IntoResponse {
-    // TODO: Cache values
     // TODO: Get model name from `tail -n 1 /proc/cpuinfo | cut -d':' -f2 | cut -c2-`
     let system = state.system.lock().await;
     let cpu_brand = system.cpus()[0].brand();
