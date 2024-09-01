@@ -18,8 +18,11 @@
 ### Cross-compile for Raspberry Pi
 
 ```bash
-# Install GCC for ARM (Ubuntu 24.04 LTS)
-sudo apt-get install gcc-arm-linux-gnueabihf
+# Install dependencies (Ubuntu 24.04 LTS)
+# You may need some or all of these
+# See https://aws.github.io/aws-lc-rs/requirements/linux.html
+sudo apt-get install -y build-essential clang libclang1 cmake gcc-arm-linux-gnueabihf
+cargo install --force --locked bindgen-cli
 
 # Add target
 rustup target add armv7-unknown-linux-gnueabihf

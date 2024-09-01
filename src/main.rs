@@ -4,6 +4,7 @@ use std::{convert::Infallible, net::SocketAddr};
 use std::{sync::Arc, time::Duration};
 
 use axum::response::Redirect;
+use axum_server::tls_rustls::RustlsConfig;
 use tokio::signal;
 use tokio::sync::{broadcast, Mutex};
 use tokio::time::sleep;
@@ -90,13 +91,11 @@ async fn main() {
     }
 
     tracing::info!("Loading TLS .pem files from {certs_path:?}");
-    // // configure certificate and private key used by https
-    // let config = RustlsConfig::from_pem_file(
-    //     certs_path.join("cert.pem"),
-    //     certs_path.join("key.pem"),
-    // )
-    // .await
-    // .unwrap();
+    // configure certificate and private key used by https
+    let config =
+        RustlsConfig::from_pem_file(certs_path.join("cert.pem"), certs_path.join("key.pem"))
+            .await
+            .unwrap();
 
     // Create a new broadcast channel
     let (tx, _rx) = broadcast::channel(100);
@@ -133,7 +132,7 @@ async fn main() {
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!("Starting HTTPS server at {addr}");
-    axum_server::bind(addr)
+    axum_server::bind_rustls(addr, config)
         .handle(handle)
         .serve(app.into_make_service())
         .await
