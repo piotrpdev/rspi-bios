@@ -7,6 +7,7 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::{Context, Result};
 
+use axum::extract::ConnectInfo;
 use axum::response::Redirect;
 use axum_server::tls_rustls::RustlsConfig;
 use tokio::signal;
@@ -23,6 +24,8 @@ use axum::{
     Router,
 };
 use tower_http::trace::{DefaultMakeSpan, TraceLayer};
+use tracing::Level;
+use tracing_subscriber::{filter, Layer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use sysinfo::{Disks, Networks, ProcessesToUpdate, System};
@@ -111,7 +114,7 @@ async fn main() -> Result<()> {
         .open(log_path.clone())
         .with_context(|| format!("Failed to open {}", log_path.display()))?;
 
-    tracing_subscriber::registry()
+    let subscriber = tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
                 format!(
@@ -121,13 +124,22 @@ async fn main() -> Result<()> {
                 .into()
             }),
         )
-        .with(tracing_subscriber::fmt::layer())
         .with(
             tracing_subscriber::fmt::layer()
                 .json()
                 .with_writer(log_file),
-        )
-        .init();
+        );
+
+    if cfg!(debug_assertions) || env::var("RSPI_BIOS_DEBUG").is_ok() {
+        subscriber.with(tracing_subscriber::fmt::layer()).init();
+    } else {
+        subscriber
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_filter(filter::LevelFilter::from_level(Level::INFO)),
+            )
+            .init();
+    }
 
     let certs_path = if cfg!(debug_assertions) {
         let mut certs_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -140,7 +152,7 @@ async fn main() -> Result<()> {
         certs_path
     };
 
-    tracing::info!("Loading TLS .pem files from {certs_path:?}");
+    tracing::debug!("Loading TLS .pem files from {certs_path:?}");
     // configure certificate and private key used by https
     let config =
         RustlsConfig::from_pem_file(certs_path.join(DEFAULT_TSL_CERT_FILE_NAME), certs_path.join(DEFAULT_TLS_KEY_FILE))
@@ -150,6 +162,7 @@ async fn main() -> Result<()> {
     // Create a new broadcast channel
     let (tx, _rx) = broadcast::channel(100);
 
+    tracing::debug!("Creating initial state");
     // Create our shared state
     let state = Arc::new(AppState {
         system_tx: tx,
@@ -163,9 +176,12 @@ async fn main() -> Result<()> {
 
     // Create a handle for our TLS server so the shutdown signal can all shutdown
     let handle = axum_server::Handle::new();
+
+    tracing::debug!("Spawning graceful shutdown handler");
     // Spawn a task to gracefully shutdown server.
     tokio::spawn(graceful_shutdown(handle.clone()));
 
+    tracing::debug!("Spawning system info stream");
     // Spawn a task to send events
     tokio::spawn(send_system_messages(state.clone()));
 
@@ -186,7 +202,7 @@ async fn main() -> Result<()> {
     tracing::info!("Starting HTTPS server at {addr}");
     axum_server::bind_rustls(addr, config)
         .handle(handle)
-        .serve(app.into_make_service())
+        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
         .with_context(|| format!("Failed to start HTTPS server at {addr}"))?;
 
@@ -236,8 +252,11 @@ async fn graceful_shutdown(handle: axum_server::Handle) {
 }
 
 async fn sse_handler(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     state: State<Arc<AppState>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    tracing::info!("Connection made to SSE from {addr}");
+
     let system_rx = state.system_tx.subscribe();
 
     let system_stream = tokio_stream::wrappers::BroadcastStream::new(system_rx)
@@ -248,7 +267,11 @@ async fn sse_handler(
         .keep_alive(axum::response::sse::KeepAlive::new().interval(SSE_KEEP_ALIVE_PERIOD))
 }
 
-async fn index_handler(state: State<Arc<AppState>>) -> impl IntoResponse {
+async fn index_handler(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    state: State<Arc<AppState>>,
+) -> impl IntoResponse {
+    tracing::info!("Connection made to index.html from {addr}");
     // TODO: Get model name from `tail -n 1 /proc/cpuinfo | cut -d':' -f2 | cut -c2-`
 
     let (cpu_brand, cpu_count, cpu_speed, total_memory, process_count) = {
