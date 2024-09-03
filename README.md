@@ -84,6 +84,12 @@ sudo cp ./rspi-bios.service /lib/systemd/system/
 sudo systemctl enable rspi-bios.service
 ```
 
+In production, I recommend creating these directories/files:
+
+- `/var/log/rspi-bios/`
+- `/etc/rspi-bios/certs/{cert,key}.pem`
+- `/usr/share/rspi-bios/html/index.html`
+
 ### Development
 
 ```bash

@@ -38,8 +38,11 @@ const SSE_KEEP_ALIVE_PERIOD: Duration = Duration::from_secs(1);
 const DEFAULT_IP_ADDRESS: std::net::IpAddr = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0));
 const DEFAULT_PORT: u16 = 3000;
 
-const DEFAULT_TSL_CERT_FILE_NAME: &str = "cert.pem";
+const DEFAULT_TLS_DIR: &str = "/etc/rspi-bios/certs";
+const DEFAULT_TLS_CERT_FILE_NAME: &str = "cert.pem";
 const DEFAULT_TLS_KEY_FILE: &str = "key.pem";
+
+const DEFAULT_LOG_PATH: &str = "/var/log/rspi-bios/";
 
 const SYSTEM_STREAM_ERROR_DATA: &str = "Error occurred while attempting to process system stream";
 
@@ -90,6 +93,84 @@ async fn send_system_messages(state: Arc<AppState>) {
     }
 }
 
+async fn create_tls_config(cert_dirs_to_search: Vec<PathBuf>) -> Option<RustlsConfig> {
+    for cert_dir in &cert_dirs_to_search {
+        tracing::debug!("Attempting to load TLS .pem files from {cert_dir:?}");
+        let config_result = RustlsConfig::from_pem_file(
+            cert_dir.join(DEFAULT_TLS_CERT_FILE_NAME),
+            cert_dir.join(DEFAULT_TLS_KEY_FILE),
+        )
+        .await;
+
+        match config_result {
+            Ok(t) => {
+                tracing::info!("Found TLS {DEFAULT_TLS_CERT_FILE_NAME} and {DEFAULT_TLS_KEY_FILE} file(s) in {cert_dir:?}");
+                return Some(t);
+            }
+            Err(e) => {
+                tracing::debug!(error = %e, "Failed to read/find TLS {DEFAULT_TLS_CERT_FILE_NAME} and/or {DEFAULT_TLS_KEY_FILE} file(s) in {cert_dir:?}");
+            }
+        }
+    }
+
+    None
+}
+
+fn get_log_path(exe_path: &std::path::Path) -> std::path::PathBuf {
+    let exe_log_path = {
+        let mut log_path = exe_path.to_path_buf();
+        log_path.pop();
+        log_path.push("debug.log");
+        log_path
+    };
+
+    let mut log_path = if cfg!(debug_assertions) {
+        let mut log_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        log_path.push("debug.log");
+        log_path
+    } else if cfg!(windows) || env::var("RSPI_BIOS_DEBUG_LOCAL_LOG").is_ok() {
+        exe_log_path.clone()
+    } else {
+        let mut log_path = PathBuf::from(DEFAULT_LOG_PATH);
+        log_path.push("debug.log");
+        log_path
+    };
+
+    let create_dir_result = std::fs::create_dir_all(log_path.clone());
+
+    if let Err(e) = create_dir_result {
+        eprintln!("Failed to create parent dirs for {log_path:?}, using {exe_log_path:?} instead. Error: {e:?}");
+        log_path = exe_log_path;
+    };
+
+    log_path
+}
+
+fn get_cert_dirs_to_search(exe_path: &std::path::Path) -> std::vec::Vec<std::path::PathBuf> {
+    let mut cert_dirs_to_search = Vec::<PathBuf>::new();
+
+    if cfg!(debug_assertions) || env::var("RSPI_BIOS_DEBUG").is_ok() {
+        let cargo_certs_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("certs");
+        cert_dirs_to_search.push(cargo_certs_path);
+    }
+
+    #[cfg(unix)]
+    {
+        let etc_certs_path = PathBuf::from(DEFAULT_TLS_DIR);
+        cert_dirs_to_search.push(etc_certs_path);
+    }
+
+    let local_certs_path = {
+        let mut certs_path = exe_path.to_path_buf();
+        certs_path.pop();
+        certs_path.push("certs");
+        certs_path
+    };
+    cert_dirs_to_search.push(local_certs_path);
+
+    cert_dirs_to_search
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let exe_path = env::current_exe().context("Failed to get exe path")?;
@@ -97,22 +178,13 @@ async fn main() -> Result<()> {
         port_arg.parse().unwrap_or(DEFAULT_PORT)
     });
 
-    let log_path = if cfg!(debug_assertions) {
-        let mut log_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        log_path.push("debug.log");
-        log_path
-    } else {
-        let mut log_path = exe_path.clone();
-        log_path.pop();
-        log_path.push("debug.log");
-        log_path
-    };
+    let log_path = get_log_path(&exe_path);
 
     let log_file = OpenOptions::new()
         .append(true)
         .create(true)
         .open(log_path.clone())
-        .with_context(|| format!("Failed to open {}", log_path.display()))?;
+        .with_context(|| format!("Failed to open/create {log_path:?}"))?;
 
     let subscriber = tracing_subscriber::registry()
         .with(
@@ -140,30 +212,19 @@ async fn main() -> Result<()> {
             )
             .init();
     }
+    tracing::info!("Logging to {log_path:?}");
 
-    let certs_path = if cfg!(debug_assertions) {
-        let mut certs_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        certs_path.push("certs");
-        certs_path
-    } else {
-        let mut certs_path = exe_path.clone();
-        certs_path.pop();
-        certs_path.push("certs");
-        certs_path
-    };
-
-    tracing::debug!("Loading TLS .pem files from {certs_path:?}");
-    // configure certificate and private key used by https
-    let config =
-        RustlsConfig::from_pem_file(certs_path.join(DEFAULT_TSL_CERT_FILE_NAME), certs_path.join(DEFAULT_TLS_KEY_FILE))
-            .await
-            .with_context(|| format!("Failed to read/find TLS {DEFAULT_TSL_CERT_FILE_NAME} and/or {DEFAULT_TLS_KEY_FILE} file(s) in {certs_path:?}"))?;
+    tracing::info!("Creating TLS config");
+    let cert_dirs_to_search = get_cert_dirs_to_search(&exe_path);
+    let config = create_tls_config(cert_dirs_to_search)
+        .await
+        .context("Failed to create TLS config")?;
 
     // Create a new broadcast channel
     let (tx, _rx) = broadcast::channel(100);
 
-    tracing::debug!("Creating initial state");
     // Create our shared state
+    tracing::debug!("Creating initial state");
     let state = Arc::new(AppState {
         system_tx: tx,
         system: Mutex::new(System::new_all()),
@@ -177,12 +238,12 @@ async fn main() -> Result<()> {
     // Create a handle for our TLS server so the shutdown signal can all shutdown
     let handle = axum_server::Handle::new();
 
-    tracing::debug!("Spawning graceful shutdown handler");
     // Spawn a task to gracefully shutdown server.
+    tracing::debug!("Spawning graceful shutdown handler");
     tokio::spawn(graceful_shutdown(handle.clone()));
 
-    tracing::debug!("Spawning system info stream");
     // Spawn a task to send events
+    tracing::debug!("Spawning system info stream");
     tokio::spawn(send_system_messages(state.clone()));
 
     // build our application with some routes
@@ -199,6 +260,7 @@ async fn main() -> Result<()> {
         .with_state(state);
 
     let addr = SocketAddr::from((DEFAULT_IP_ADDRESS, port));
+
     tracing::info!("Starting HTTPS server at {addr}");
     axum_server::bind_rustls(addr, config)
         .handle(handle)
@@ -239,9 +301,9 @@ async fn graceful_shutdown(handle: axum_server::Handle) {
         () = terminate => {},
     }
 
-    tracing::info!("Received termination signal, shutting down...");
     // Refuses new connections
     // 10 secs is how long docker will wait to force shutdown
+    tracing::info!("Received termination signal, shutting down...");
     handle.graceful_shutdown(Some(GRACEFUL_SHUTDOWN_PERIOD));
 
     // Print alive connection count every second.
