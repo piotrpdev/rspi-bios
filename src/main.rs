@@ -1,5 +1,4 @@
 use std::env;
-use std::fs::OpenOptions;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use std::{convert::Infallible, net::SocketAddr};
@@ -8,11 +7,13 @@ use std::{sync::Arc, time::Duration};
 use anyhow::{Context, Result};
 
 use axum::extract::ConnectInfo;
+use axum::response::sse::KeepAlive;
 use axum::response::Redirect;
 use axum_server::tls_rustls::RustlsConfig;
 use tokio::signal;
 use tokio::sync::{broadcast, Mutex};
 use tokio::time::sleep;
+use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::{Stream, StreamExt as _};
 
 use askama::Template;
@@ -61,116 +62,6 @@ struct AppState {
     networks: Mutex<Networks>,
 }
 
-async fn send_system_messages(state: Arc<AppState>) {
-    let mut interval = tokio::time::interval(SYSTEM_REFRESH_PERIOD);
-    loop {
-        interval.tick().await;
-
-        let uptime = System::uptime();
-
-        let process_count = {
-            let mut system = state.system.lock().await;
-            system.refresh_processes(ProcessesToUpdate::All);
-            system.processes().len()
-        };
-
-        let mut total_rx = 0;
-        let mut total_tx = 0;
-        {
-            let mut networks = state.networks.lock().await;
-            networks.refresh();
-
-            for (_interface_name, data) in networks.iter() {
-                total_rx += data.total_received();
-                total_tx += data.total_transmitted();
-            }
-        };
-
-        let event = Event::default().data(format!(
-            "{total_rx:?}, {total_tx:?}, {process_count:?}, {uptime:?}"
-        ));
-        let _ = state.system_tx.send(event);
-    }
-}
-
-async fn create_tls_config(cert_dirs_to_search: Vec<PathBuf>) -> Option<RustlsConfig> {
-    for cert_dir in &cert_dirs_to_search {
-        tracing::debug!("Attempting to load TLS .pem files from {cert_dir:?}");
-        let config_result = RustlsConfig::from_pem_file(
-            cert_dir.join(DEFAULT_TLS_CERT_FILE_NAME),
-            cert_dir.join(DEFAULT_TLS_KEY_FILE),
-        )
-        .await;
-
-        match config_result {
-            Ok(t) => {
-                tracing::info!("Found TLS {DEFAULT_TLS_CERT_FILE_NAME} and {DEFAULT_TLS_KEY_FILE} file(s) in {cert_dir:?}");
-                return Some(t);
-            }
-            Err(e) => {
-                tracing::debug!(error = %e, "Failed to read/find TLS {DEFAULT_TLS_CERT_FILE_NAME} and/or {DEFAULT_TLS_KEY_FILE} file(s) in {cert_dir:?}");
-            }
-        }
-    }
-
-    None
-}
-
-fn get_log_path(exe_path: &std::path::Path) -> std::path::PathBuf {
-    let exe_log_path = {
-        let mut log_path = exe_path.to_path_buf();
-        log_path.pop();
-        log_path.push("debug.log");
-        log_path
-    };
-
-    let mut log_path = if cfg!(debug_assertions) {
-        let mut log_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        log_path.push("debug.log");
-        log_path
-    } else if cfg!(windows) || env::var("RSPI_BIOS_DEBUG_LOCAL_LOG").is_ok() {
-        exe_log_path.clone()
-    } else {
-        let mut log_path = PathBuf::from(DEFAULT_LOG_PATH);
-        log_path.push("debug.log");
-        log_path
-    };
-
-    let create_dir_result = std::fs::create_dir_all(log_path.clone());
-
-    if let Err(e) = create_dir_result {
-        eprintln!("Failed to create parent dirs for {log_path:?}, using {exe_log_path:?} instead. Error: {e:?}");
-        log_path = exe_log_path;
-    };
-
-    log_path
-}
-
-fn get_cert_dirs_to_search(exe_path: &std::path::Path) -> std::vec::Vec<std::path::PathBuf> {
-    let mut cert_dirs_to_search = Vec::<PathBuf>::new();
-
-    if cfg!(debug_assertions) || env::var("RSPI_BIOS_DEBUG").is_ok() {
-        let cargo_certs_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("certs");
-        cert_dirs_to_search.push(cargo_certs_path);
-    }
-
-    #[cfg(unix)]
-    {
-        let etc_certs_path = PathBuf::from(DEFAULT_TLS_DIR);
-        cert_dirs_to_search.push(etc_certs_path);
-    }
-
-    let local_certs_path = {
-        let mut certs_path = exe_path.to_path_buf();
-        certs_path.pop();
-        certs_path.push("certs");
-        certs_path
-    };
-    cert_dirs_to_search.push(local_certs_path);
-
-    cert_dirs_to_search
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let exe_path = env::current_exe().context("Failed to get exe path")?;
@@ -180,7 +71,7 @@ async fn main() -> Result<()> {
 
     let log_path = get_log_path(&exe_path);
 
-    let log_file = OpenOptions::new()
+    let log_file = std::fs::OpenOptions::new()
         .append(true)
         .create(true)
         .open(log_path.clone())
@@ -273,60 +164,41 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-// https://github.com/tokio-rs/axum/blob/1ac617a1b540e8523347f5ee889d65cad9a45ec4/examples/tls-graceful-shutdown/src/main.rs
-// https://github.com/programatik29/axum-server/blob/d48b1a931909d156177bc87684910769e67be905/examples/graceful_shutdown.rs
-async fn graceful_shutdown(handle: axum_server::Handle) {
-    let ctrl_c = async {
-        signal::ctrl_c().await.unwrap_or_else(|e| {
-            tracing::warn!(error = %e, "Failed to install Ctrl+C handler");
-        });
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        let signal_result = signal::unix::signal(signal::unix::SignalKind::terminate());
-        match signal_result {
-            Ok(mut s) => {
-                s.recv().await;
-            }
-            Err(e) => tracing::warn!(error = %e, "Failed to install Unix SIGTERM signal handler"),
-        }
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        () = ctrl_c => {},
-        () = terminate => {},
-    }
-
-    // Refuses new connections
-    // 10 secs is how long docker will wait to force shutdown
-    tracing::info!("Received termination signal, shutting down...");
-    handle.graceful_shutdown(Some(GRACEFUL_SHUTDOWN_PERIOD));
-
-    // Print alive connection count every second.
-    loop {
-        sleep(ALIVE_CONNECTIONS_CHECK_PERIOD).await;
-        tracing::debug!("Alive connections: {}", handle.connection_count());
-    }
+#[derive(Template)]
+#[template(path = "index.html")]
+struct IndexTemplate {
+    kernel_version: String,
+    model_name: String,
+    cpu_brand: String,
+    cpu_brand_short: String,
+    cpu_count: usize,
+    cpu_speed: u64,
+    extended_memory: u64,
+    primary_disk_size: u64,
+    total_memory: u64,
+    rounded_memory: u64,
+    uptime: String,
+    process_count: usize,
+    rx: u64,
+    tx: u64,
 }
 
-async fn sse_handler(
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    state: State<Arc<AppState>>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    tracing::info!("Connection made to SSE from {addr}");
+struct HtmlTemplate<T>(T);
 
-    let system_rx = state.system_tx.subscribe();
-
-    let system_stream = tokio_stream::wrappers::BroadcastStream::new(system_rx)
-        .map(|msg| msg.unwrap_or_else(|_| Event::default().data(SYSTEM_STREAM_ERROR_DATA)))
-        .map(Ok);
-
-    Sse::new(system_stream)
-        .keep_alive(axum::response::sse::KeepAlive::new().interval(SSE_KEEP_ALIVE_PERIOD))
+impl<T> IntoResponse for HtmlTemplate<T>
+where
+    T: Template,
+{
+    fn into_response(self) -> Response {
+        match self.0.render() {
+            Ok(html) => Html(html).into_response(),
+            Err(err) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to render template. Error: {err}"),
+            )
+                .into_response(),
+        }
+    }
 }
 
 async fn index_handler(
@@ -397,39 +269,167 @@ async fn index_handler(
     HtmlTemplate(template)
 }
 
-#[derive(Template)]
-#[template(path = "index.html")]
-struct IndexTemplate {
-    kernel_version: String,
-    model_name: String,
-    cpu_brand: String,
-    cpu_brand_short: String,
-    cpu_count: usize,
-    cpu_speed: u64,
-    extended_memory: u64,
-    primary_disk_size: u64,
-    total_memory: u64,
-    rounded_memory: u64,
-    uptime: String,
-    process_count: usize,
-    rx: u64,
-    tx: u64,
+async fn sse_handler(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    state: State<Arc<AppState>>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    tracing::info!("Connection made to SSE from {addr}");
+
+    let system_rx = state.system_tx.subscribe();
+
+    let system_stream = BroadcastStream::new(system_rx)
+        .map(|msg| msg.unwrap_or_else(|_| Event::default().data(SYSTEM_STREAM_ERROR_DATA)))
+        .map(Ok);
+
+    Sse::new(system_stream).keep_alive(KeepAlive::new().interval(SSE_KEEP_ALIVE_PERIOD))
 }
 
-struct HtmlTemplate<T>(T);
+async fn send_system_messages(state: Arc<AppState>) {
+    let mut interval = tokio::time::interval(SYSTEM_REFRESH_PERIOD);
+    loop {
+        interval.tick().await;
 
-impl<T> IntoResponse for HtmlTemplate<T>
-where
-    T: Template,
-{
-    fn into_response(self) -> Response {
-        match self.0.render() {
-            Ok(html) => Html(html).into_response(),
-            Err(err) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to render template. Error: {err}"),
-            )
-                .into_response(),
+        let uptime = System::uptime();
+
+        let process_count = {
+            let mut system = state.system.lock().await;
+            system.refresh_processes(ProcessesToUpdate::All);
+            system.processes().len()
+        };
+
+        let mut total_rx = 0;
+        let mut total_tx = 0;
+        {
+            let mut networks = state.networks.lock().await;
+            networks.refresh();
+
+            for (_interface_name, data) in networks.iter() {
+                total_rx += data.total_received();
+                total_tx += data.total_transmitted();
+            }
+        };
+
+        let event = Event::default().data(format!(
+            "{total_rx:?}, {total_tx:?}, {process_count:?}, {uptime:?}"
+        ));
+        let _ = state.system_tx.send(event);
+    }
+}
+
+// https://github.com/tokio-rs/axum/blob/1ac617a1b540e8523347f5ee889d65cad9a45ec4/examples/tls-graceful-shutdown/src/main.rs
+// https://github.com/programatik29/axum-server/blob/d48b1a931909d156177bc87684910769e67be905/examples/graceful_shutdown.rs
+async fn graceful_shutdown(handle: axum_server::Handle) {
+    let ctrl_c = async {
+        signal::ctrl_c().await.unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "Failed to install Ctrl+C handler");
+        });
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        let signal_result = signal::unix::signal(signal::unix::SignalKind::terminate());
+        match signal_result {
+            Ok(mut s) => {
+                s.recv().await;
+            }
+            Err(e) => tracing::warn!(error = %e, "Failed to install Unix SIGTERM signal handler"),
+        }
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        () = ctrl_c => {},
+        () = terminate => {},
+    }
+
+    // Refuses new connections
+    // 10 secs is how long docker will wait to force shutdown
+    tracing::info!("Received termination signal, shutting down...");
+    handle.graceful_shutdown(Some(GRACEFUL_SHUTDOWN_PERIOD));
+
+    // Print alive connection count every second.
+    loop {
+        sleep(ALIVE_CONNECTIONS_CHECK_PERIOD).await;
+        tracing::debug!("Alive connections: {}", handle.connection_count());
+    }
+}
+
+async fn create_tls_config(cert_dirs_to_search: Vec<PathBuf>) -> Option<RustlsConfig> {
+    for cert_dir in &cert_dirs_to_search {
+        tracing::debug!("Attempting to load TLS .pem files from {cert_dir:?}");
+        let config_result = RustlsConfig::from_pem_file(
+            cert_dir.join(DEFAULT_TLS_CERT_FILE_NAME),
+            cert_dir.join(DEFAULT_TLS_KEY_FILE),
+        )
+        .await;
+
+        match config_result {
+            Ok(t) => {
+                tracing::info!("Found TLS {DEFAULT_TLS_CERT_FILE_NAME} and {DEFAULT_TLS_KEY_FILE} file(s) in {cert_dir:?}");
+                return Some(t);
+            }
+            Err(e) => {
+                tracing::debug!(error = %e, "Failed to read/find TLS {DEFAULT_TLS_CERT_FILE_NAME} and/or {DEFAULT_TLS_KEY_FILE} file(s) in {cert_dir:?}");
+            }
         }
     }
+
+    None
+}
+
+fn get_cert_dirs_to_search(exe_path: &std::path::Path) -> std::vec::Vec<std::path::PathBuf> {
+    let mut cert_dirs_to_search = Vec::<PathBuf>::new();
+
+    if cfg!(debug_assertions) || env::var("RSPI_BIOS_DEBUG").is_ok() {
+        let cargo_certs_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("certs");
+        cert_dirs_to_search.push(cargo_certs_path);
+    }
+
+    #[cfg(unix)]
+    {
+        let etc_certs_path = PathBuf::from(DEFAULT_TLS_DIR);
+        cert_dirs_to_search.push(etc_certs_path);
+    }
+
+    let local_certs_path = {
+        let mut certs_path = exe_path.to_path_buf();
+        certs_path.pop();
+        certs_path.push("certs");
+        certs_path
+    };
+    cert_dirs_to_search.push(local_certs_path);
+
+    cert_dirs_to_search
+}
+
+fn get_log_path(exe_path: &std::path::Path) -> std::path::PathBuf {
+    let exe_log_path = {
+        let mut log_path = exe_path.to_path_buf();
+        log_path.pop();
+        log_path.push("debug.log");
+        log_path
+    };
+
+    let mut log_path = if cfg!(debug_assertions) {
+        let mut log_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        log_path.push("debug.log");
+        log_path
+    } else if cfg!(windows) || env::var("RSPI_BIOS_DEBUG_LOCAL_LOG").is_ok() {
+        exe_log_path.clone()
+    } else {
+        let mut log_path = PathBuf::from(DEFAULT_LOG_PATH);
+        log_path.push("debug.log");
+        log_path
+    };
+
+    let create_dir_result = std::fs::create_dir_all(log_path.clone());
+
+    if let Err(e) = create_dir_result {
+        eprintln!("Failed to create parent dirs for {log_path:?}, using {exe_log_path:?} instead. Error: {e:?}");
+        log_path = exe_log_path;
+    };
+
+    log_path
 }
