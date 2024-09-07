@@ -45,7 +45,7 @@ const DEFAULT_TLS_KEY_FILE: &str = "key.pem";
 
 const DEFAULT_LOG_PATH: &str = "/var/log/rspi-bios/";
 
-const SYSTEM_STREAM_ERROR_DATA: &str = "Error occurred while attempting to process system stream";
+const SYSTEM_STREAM_ERROR_DATA: &str = "0, 0, 0, 0";
 
 const DEFAULT_KERNEL_VERSION: &str = "v6.1";
 const DEFAULT_CPU_BRAND: &str = "Cortex-A72";
