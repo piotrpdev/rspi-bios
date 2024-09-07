@@ -424,7 +424,9 @@ fn get_log_path(exe_path: &std::path::Path) -> std::path::PathBuf {
         log_path
     };
 
-    let create_dir_result = std::fs::create_dir_all(log_path.clone());
+    let mut parent = log_path.clone();
+    parent.pop();
+    let create_dir_result = std::fs::create_dir_all(parent);
 
     if let Err(e) = create_dir_result {
         eprintln!("Failed to create parent dirs for {log_path:?}, using {exe_log_path:?} instead. Error: {e:?}");
