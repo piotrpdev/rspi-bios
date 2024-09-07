@@ -11,9 +11,9 @@ use axum::response::sse::KeepAlive;
 use axum::response::Redirect;
 use axum_server::tls_rustls::RustlsConfig;
 use tokio::signal;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{watch, Mutex};
 use tokio::time::sleep;
-use tokio_stream::wrappers::BroadcastStream;
+use tokio_stream::wrappers::WatchStream;
 use tokio_stream::{Stream, StreamExt as _};
 
 use askama::Template;
@@ -55,7 +55,7 @@ const DEFAULT_DISK_SPACE: u64 = 32_000_000_000;
 const DEFAULT_MODEL_NAME: &str = "Raspberry Pi 4 Model B Rev 1.4";
 
 struct AppState {
-    system_tx: broadcast::Sender<Event>,
+    system_tx: watch::Sender<Event>,
     system: Mutex<System>,
     kernel_version: Mutex<String>,
     disks: Mutex<Disks>,
@@ -116,8 +116,7 @@ async fn main() -> Result<()> {
         .await
         .context("Failed to create TLS config")?;
 
-    // Create a new broadcast channel
-    let (tx, _rx) = broadcast::channel(100);
+    let tx = watch::Sender::new(Event::default().data(SYSTEM_STREAM_ERROR_DATA));
 
     // Create our shared state
     tracing::debug!("Creating initial state");
@@ -186,6 +185,7 @@ struct IndexTemplate {
     process_count: usize,
     rx: u64,
     tx: u64,
+    git_hash: String,
 }
 
 struct HtmlTemplate<T>(T);
@@ -269,6 +269,7 @@ async fn index_handler(
         process_count,
         rx: total_rx,
         tx: total_tx,
+        git_hash: env!("GIT_HASH").to_string(),
     };
 
     HtmlTemplate(template)
@@ -282,9 +283,7 @@ async fn sse_handler(
 
     let system_rx = state.system_tx.subscribe();
 
-    let system_stream = BroadcastStream::new(system_rx)
-        .map(|msg| msg.unwrap_or_else(|_| Event::default().data(SYSTEM_STREAM_ERROR_DATA)))
-        .map(Ok);
+    let system_stream = WatchStream::from_changes(system_rx).map(Ok);
 
     Sse::new(system_stream).keep_alive(KeepAlive::new().interval(SSE_KEEP_ALIVE_PERIOD))
 }
