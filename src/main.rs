@@ -104,6 +104,11 @@ async fn main() -> Result<()> {
             .init();
     }
     tracing::info!("Logging to {log_path:?}");
+    tracing::debug!(
+        "Running {} built from Git commit {}",
+        env!("CARGO_CRATE_NAME"),
+        env!("GIT_HASH")
+    );
 
     tracing::info!("Creating TLS config");
     let cert_dirs_to_search = get_cert_dirs_to_search(&exe_path);
