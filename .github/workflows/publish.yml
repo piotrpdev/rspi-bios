@@ -1,0 +1,53 @@
+name: 'publish'
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency: production
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.7
+
+      - name: Restore Apt packages
+        uses: awalsh128/cache-apt-pkgs-action@v1.4.2
+        with:
+          packages: libclang1 gcc-arm-linux-gnueabihf
+          version: "1.0"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.81.0
+        with:
+          targets: armv7-unknown-linux-gnueabihf
+
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@v2.7.3
+
+      - name: Build
+        run: cargo build --release --target=armv7-unknown-linux-gnueabihf
+
+      - name: Rename binary
+        run: cp target/armv7-unknown-linux-gnueabihf/release/rspi-bios ./rspi-bios-armv7-unknown-linux-gnu
+
+      - name: Tag
+        id: tag
+        uses: anothrNick/github-tag-action@1.70.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INITIAL_VERSION: "1.0.0"
+
+      - name: Release
+        uses: softprops/action-gh-release@v2.0.8
+        with:
+          tag_name: ${{ steps.tag.outputs.new_tag }}
+          files: "rspi-bios-armv7-unknown-linux-gnu"
+          fail_on_unmatched_files: true
