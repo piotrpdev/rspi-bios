@@ -45,8 +45,6 @@ rustup target add armv7-unknown-linux-gnueabihf
 
 # Build
 cargo build --release --target=armv7-unknown-linux-gnueabihf
-# ...or statically
-RUSTFLAGS='-C target-feature=+crt-static' cargo build --release --target=armv7-unknown-linux-gnueabihf
 ```
 
 You can then copy and run the outputted binary like this:
