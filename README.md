@@ -40,7 +40,7 @@ wget https://github.com/piotrpdev/rspi-bios/releases/latest/download/rspi-bios_1
 sudo dpkg -i rspi-bios_1.0.0-1_arm64.deb
 
 # Copy certs (you need to provide your own)
-sudo cp ~/rspi-bios/certs/*.pem /etc/rspi-bios/certs/
+sudo cp ~/rspi-bios/certs/{cert,key}.pem /etc/rspi-bios/certs/
 
 # Run and set to launch on boot
 sudo systemctl enable --now rspi-bios
