@@ -79,7 +79,9 @@ async fn main() -> Result<()> {
         .append(true)
         .create(true)
         .open(log_path.clone())
-        .with_context(|| format!("Failed to open/create {log_path:?}"))?;
+        .with_context(|| {
+            format!("Failed to open/create {log_path:?}, did you set the correct permissions?")
+        })?;
 
     let subscriber = tracing_subscriber::registry()
         .with(
@@ -118,7 +120,7 @@ async fn main() -> Result<()> {
     let cert_dirs_to_search = get_cert_dirs_to_search(&exe_path);
     let config = create_tls_config(cert_dirs_to_search)
         .await
-        .context("Failed to create TLS config")?;
+        .context("Failed to create TLS config, did you set the correct permissions? Did you put the .pem files in the correct place?")?;
 
     let tx = watch::Sender::new(Event::default().data(SYSTEM_STREAM_ERROR_DATA));
 
@@ -169,7 +171,9 @@ async fn main() -> Result<()> {
         .handle(handle)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
-        .with_context(|| format!("Failed to start HTTPS server at {addr}"))?;
+        .with_context(|| {
+            format!("Failed to start HTTPS server at {addr}, did you set the correct permissions?")
+        })?;
 
     tracing::info!("Server has been shut down.");
 

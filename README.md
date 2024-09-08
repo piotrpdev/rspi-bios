@@ -14,8 +14,6 @@
 
 ## Features
 
-<!-- TODO: Add more features and packages/crates -->
-
 - [x] Served by a Rust-powered web server
   - *...using the [axum] crate*
 - [x] Displays real system data from the Raspberry Pi
@@ -31,7 +29,28 @@
 
 ## Usage
 
+> [!NOTE]
+> The package's [`postinst`][postinst] script allows `rspi-bios` to bind to low ports.
+
+```bash
+# Download package from releases
+wget https://github.com/piotrpdev/rspi-bios/releases/latest/download/rspi-bios_1.0.0-1_arm64.deb
+
+# Install package
+sudo dpkg -i rspi-bios_1.0.0-1_arm64.deb
+
+# Copy certs (you need to provide your own)
+sudo cp ~/rspi-bios/certs/*.pem /etc/rspi-bios/certs/
+
+# Run and set to launch on boot
+sudo systemctl enable --now rspi-bios
+```
+
+## Development
+
 ### Cross-compile for Raspberry Pi
+
+#### Build
 
 ```bash
 # Install dependencies (Ubuntu 24.04 LTS)
@@ -51,7 +70,7 @@ cargo build --release --target=aarch64-unknown-linux-gnu
 # Set RUSTFLAGS='-C target-feature=+crt-static' if target uses older version of glibc
 ```
 
-You can then copy and run the outputted binary like this:
+#### Run
 
 ```bash
 # Copy
@@ -63,7 +82,7 @@ scp -r target/armv7-unknown-linux-gnueabihf/release/rspi-bios templates/ certs/ 
 ssh -t piotrpdev@192.168.0.200 "chmod +x ~/rspi-bios/rspi-bios && ~/rspi-bios/rspi-bios"
 ```
 
-If you want, you can bind to a low port like this:
+#### Bind to low port (optional)
 
 ```bash
 # (Optional) Allow rspi-bios to bind low ports without root
@@ -74,19 +93,23 @@ sudo setcap CAP_NET_BIND_SERVICE=+eip ./rspi-bios
 ./rspi-bios 443
 ```
 
-A template [`rspi-bios.service`][service] file is also included in the repo if you're
+#### Start on boot (optional)
+
+A template [`rspi-bios.service`][service] file is included in the repo if you're
 using `systemd` and want to automatically run the script on startup e.g.:
 
 ```bash
 # Edit the template
-vim ./rspi-bios.service
+vim ./debian/rspi-bios.service
 
 # Copy it
-sudo cp ./rspi-bios.service /lib/systemd/system/
+sudo cp ./debian/rspi-bios.service /lib/systemd/system/
 
 # Start on boot (--now to start now)
 sudo systemctl enable rspi-bios.service
 ```
+
+#### Directories
 
 In production, I recommend creating/using these directories:
 
@@ -95,7 +118,20 @@ In production, I recommend creating/using these directories:
 - `/etc/rspi-bios/certs/` (place `{cert,key}.pem` here)
 - `/usr/share/rspi-bios/html/` (place `index.html` here)
 
-### Development
+### Build `.deb`
+
+You will need [`cargo-deb`][cargo-deb].
+
+```bash
+cargo install cargo-deb
+cargo deb --locked --target=aarch64-unknown-linux-gnu
+# Set RUSTFLAGS='-C target-feature=+crt-static' if target uses older version of glibc
+```
+
+### Tools
+
+I recommend installing [`cargo-watch`][cargo-watch] if you plan on making a lot
+of changes.
 
 ```bash
 cargo install cargo-watch
@@ -127,7 +163,10 @@ Made using the following resources:
 [tuicss]: https://github.com/vinibiavatti1/TuiCss
 [tunnel]: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
 [origin]: https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/
-[service]: ./rspi-bios.service
+[postinst]: ./debian/postinst
+[service]: ./debian/rspi-bios.service
+[cargo-deb]: https://github.com/kornelski/cargo-deb
+[cargo-watch]: https://github.com/watchexec/cargo-watch
 [license]: ./LICENSE
 [axum-examples]: https://github.com/tokio-rs/axum/tree/main/examples
 [axum-license]: https://github.com/tokio-rs/axum/blob/main/axum/LICENSE

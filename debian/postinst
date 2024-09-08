@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# https://askubuntu.com/a/439867/1760000
+
+#DEBHELPER#
+
+set -e
+
+BIN="/usr/bin/rspi-bios"
+
+setcap CAP_NET_BIND_SERVICE=+eip "$BIN"
+
+DIR="/var/log/rspi-bios/"
+
+if [ ! -d "$DIR" ]; then
+    mkdir -p "$DIR"
+    chmod 777 "$DIR"
+fi

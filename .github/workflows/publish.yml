@@ -23,7 +23,7 @@ jobs:
       - name: Restore Apt packages
         uses: awalsh128/cache-apt-pkgs-action@v1.4.2
         with:
-          packages: libclang1 gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu
+          packages: liblzma-dev libclang1 gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu
           version: "1.0"
 
       - name: Install Rust toolchain
@@ -34,29 +34,54 @@ jobs:
       - name: Restore Rust cache
         uses: Swatinem/rust-cache@v2.7.3
 
+      - name: Setup cargo-binstall
+        uses: cargo-bins/cargo-binstall@v1.10.4
+
+      - name: Install cargo-deb
+        run: cargo binstall --force --no-confirm cargo-deb@2.6.1
+
+      - name: Tag (Dry run)
+        id: tag-dry
+        uses: anothrNick/github-tag-action@1.70.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INITIAL_VERSION: "1.0.0"
+          DRY_RUN: true
+
       - name: Static build (ARM64)
         run: RUSTFLAGS='-C target-feature=+crt-static' cargo build --locked --release --target=aarch64-unknown-linux-gnu
 
       - name: Static build (ARMv7)
         run: RUSTFLAGS='-C target-feature=+crt-static' cargo build --locked --release --target=armv7-unknown-linux-gnueabihf
 
+      - name: Static deb build (ARM64)
+        run: RUSTFLAGS='-C target-feature=+crt-static' cargo deb --deb-version ${{ steps.tag-dry.outputs.new_tag }} --locked --target=aarch64-unknown-linux-gnu
+
+      - name: Static deb build (ARMv7)
+        run: RUSTFLAGS='-C target-feature=+crt-static' cargo deb --deb-version ${{ steps.tag-dry.outputs.new_tag }} --locked --target=armv7-unknown-linux-gnueabihf
+
       - name: Rename binaries
         run: |
-          cp target/aarch64-unknown-linux-gnu/release/rspi-bios ./rspi-bios-aarch64-unknown-linux-gnu
-          cp target/armv7-unknown-linux-gnueabihf/release/rspi-bios ./rspi-bios-armv7-unknown-linux-gnueabihf
+          cp target/aarch64-unknown-linux-gnu/release/rspi-bios ./rspi-bios_${{ steps.tag-dry.outputs.new_tag }}_aarch64-unknown-linux-gnu
+          cp target/armv7-unknown-linux-gnueabihf/release/rspi-bios ./rspi-bios_${{ steps.tag-dry.outputs.new_tag }}_armv7-unknown-linux-gnueabihf
+          cp target/aarch64-unknown-linux-gnu/debian/rspi-bios_${{ steps.tag-dry.outputs.new_tag }}_arm64.deb ./rspi-bios_${{ steps.tag-dry.outputs.new_tag }}_arm64.deb
+          cp target/armv7-unknown-linux-gnueabihf/debian/rspi-bios_${{ steps.tag-dry.outputs.new_tag }}_armhf.deb ./rspi-bios_${{ steps.tag-dry.outputs.new_tag }}_armhf.deb
 
-      - name: Tag
-        id: tag
+      - name: Tag (Real run)
+        id: tag-real
         uses: anothrNick/github-tag-action@1.70.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INITIAL_VERSION: "1.0.0"
+          CUSTOM_TAG: ${{ steps.tag-dry.outputs.new_tag }}
+          DRY_RUN: false
 
       - name: Release
         uses: softprops/action-gh-release@v2.0.8
         with:
-          tag_name: ${{ steps.tag.outputs.new_tag }}
+          tag_name: ${{ steps.tag-dry.outputs.new_tag }}
           fail_on_unmatched_files: true
           files: |
-            rspi-bios-aarch64-unknown-linux-gnu
-            rspi-bios-armv7-unknown-linux-gnueabihf
+            rspi-bios_${{ steps.tag-dry.outputs.new_tag }}_aarch64-unknown-linux-gnu
+            rspi-bios_${{ steps.tag-dry.outputs.new_tag }}_armv7-unknown-linux-gnueabihf
+            rspi-bios_${{ steps.tag-dry.outputs.new_tag }}_arm64.deb
+            rspi-bios_${{ steps.tag-dry.outputs.new_tag }}_armhf.deb

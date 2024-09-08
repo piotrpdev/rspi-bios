@@ -1,12 +1,35 @@
 [package]
 name = "rspi-bios"
-authors = ["Piotr Placzek <piotrpdev@gmail.com>"]
 version = "1.0.0"
+authors = ["Piotr Placzek <piotrpdev@gmail.com>"]
 edition = "2021"
+rust-version = "1.74"
+description = "Raspberry Pi dashboard that mimics the style of old BIOS designs."
 repository = "https://github.com/piotrpdev/rspi-bios"
 license = "GPL-3.0"
+keywords = ["rust", "raspberry-pi", "sse", "bios", "axum"]
+categories = ["command-line-utilities"]
 publish = false
-rust-version = "1.74"
+
+[package.metadata.deb]
+license-file = ["LICENSE", "0"]
+extended-description = """\
+Raspberry Pi dashboard that mimics the style of old BIOS designs.
+- Served by a Rust-powered web server
+- Displays real system data from the Raspberry Pi
+- Implements Server-Sent Events (SSE) for real-time updates
+- Uses templating for HTML generation
+- Mimics old BIOS designs
+- Served over HTTPS"""
+section = "web"
+maintainer-scripts = "debian/"
+systemd-units = { enable = false }
+assets = [
+    ["target/release/rspi-bios", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/rspi-bios/README", "644"],
+    ["templates/index.html", "usr/share/rspi-bios/html/index.html", "644"],
+    ["certs/.placeholder", "etc/rspi-bios/certs/.placeholder", "644"],
+]
 
 [dependencies]
 anyhow = "1.0.86"
