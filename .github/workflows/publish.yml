@@ -35,7 +35,7 @@ jobs:
         uses: Swatinem/rust-cache@v2.7.3
 
       - name: Build
-        run: cargo build --release --target=armv7-unknown-linux-gnueabihf
+        run: cargo build --locked --release --target=armv7-unknown-linux-gnueabihf
 
       - name: Rename binary
         run: cp target/armv7-unknown-linux-gnueabihf/release/rspi-bios ./rspi-bios-armv7-unknown-linux-gnu
