@@ -375,7 +375,7 @@
             <br />
             <span class="yellow-255-text">C</span>PU.......: Broadcom BCM2711,
             <!-- prettier-ignore -->
-            Quad core {{ cpu_brand }} (ARM v8) 64-bit SoC @ {{ cpu_speed }} MHz
+            {{ cpu_brand }} ({{ cpu_arch }}) SoC @ {{ cpu_speed }} MHz
             <br />
             <!-- prettier-ignore -->
             <!-- eslint-disable-next-line prettier/prettier -->
@@ -400,8 +400,7 @@
             <span class="yellow-255-text">P</span>oE.......: Power over Ethernet
             (PoE) enabled (requires separate PoE HAT)
             <br />
-            <span class="yellow-255-text">O</span>S........: Raspberry Pi OS
-            (32-bit) / Ubuntu 20.04 LTS (32-bit)
+            <span class="yellow-255-text">O</span>S........: {{ os_version }}
         </div>
         <script>
             // @ts-check

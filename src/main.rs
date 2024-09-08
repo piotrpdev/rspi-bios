@@ -53,11 +53,15 @@ const DEFAULT_CPU_BRAND_SHORT: &str = "Cortex-A";
 const DEFAULT_CPU_FREQUENCY: u64 = 1_800;
 const DEFAULT_DISK_SPACE: u64 = 32_000_000_000;
 const DEFAULT_MODEL_NAME: &str = "Raspberry Pi 4 Model B Rev 1.4";
+const DEFAULT_OS_VERSION: &str = "Raspbian GNU/Linux 11 (bullseye)";
+const DEFAULT_CPU_ARCH: &str = "aarch64";
 
 struct AppState {
     system_tx: watch::Sender<Event>,
     system: Mutex<System>,
     kernel_version: Mutex<String>,
+    os_version: Mutex<String>,
+    cpu_arch: Mutex<String>,
     disks: Mutex<Disks>,
     networks: Mutex<Networks>,
 }
@@ -126,6 +130,10 @@ async fn main() -> Result<()> {
         kernel_version: Mutex::new(
             System::kernel_version().unwrap_or_else(|| DEFAULT_KERNEL_VERSION.to_string()),
         ),
+        os_version: Mutex::new(
+            System::long_os_version().unwrap_or_else(|| DEFAULT_OS_VERSION.to_string()),
+        ),
+        cpu_arch: Mutex::new(System::cpu_arch().unwrap_or_else(|| DEFAULT_CPU_ARCH.to_string())),
         disks: Mutex::new(Disks::new_with_refreshed_list()),
         networks: Mutex::new(Networks::new_with_refreshed_list()),
     });
@@ -186,6 +194,8 @@ struct IndexTemplate {
     rx: u64,
     tx: u64,
     git_hash: String,
+    os_version: String,
+    cpu_arch: String,
 }
 
 struct HtmlTemplate<T>(T);
@@ -270,6 +280,8 @@ async fn index_handler(
         rx: total_rx,
         tx: total_tx,
         git_hash: env!("GIT_HASH").to_string(),
+        os_version: state.os_version.lock().await.to_string(),
+        cpu_arch: state.cpu_arch.lock().await.to_string(),
     };
 
     HtmlTemplate(template)
