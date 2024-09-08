@@ -37,14 +37,18 @@
 # Install dependencies (Ubuntu 24.04 LTS)
 # You may need some or all of these
 # See https://aws.github.io/aws-lc-rs/requirements/linux.html
-sudo apt-get install -y clang libclang1 cmake gcc-arm-linux-gnueabihf
+sudo apt-get install -y clang libclang1 cmake gcc-aarch64-linux-gnu
+# (32-bit ARMv7) sudo apt-get install -y gcc-arm-linux-gnueabihf
 cargo install --force --locked bindgen-cli
 
 # Add target (linker already configured for you in ./.cargo/config.toml)
-rustup target add armv7-unknown-linux-gnueabihf
+rustup target add aarch64-unknown-linux-gnu
+# (32-bit ARMv7) rustup target add armv7-unknown-linux-gnueabihf
 
 # Build
-cargo build --release --target=armv7-unknown-linux-gnueabihf
+cargo build --release --target=aarch64-unknown-linux-gnu
+# (32-bit ARMv7) cargo build --release --target=armv7-unknown-linux-gnueabihf
+# Set RUSTFLAGS='-C target-feature=+crt-static' if target uses older version of glibc
 ```
 
 You can then copy and run the outputted binary like this:
