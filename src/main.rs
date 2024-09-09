@@ -118,9 +118,11 @@ async fn main() -> Result<()> {
 
     tracing::info!("Creating TLS config");
     let cert_dirs_to_search = get_cert_dirs_to_search(&exe_path);
-    let config = create_tls_config(cert_dirs_to_search)
-        .await
-        .context("Failed to create TLS config, did you set the correct permissions? Did you put the .pem files in the correct place?")?;
+    let Some(config) = create_tls_config(cert_dirs_to_search).await else {
+        const ERR_MSG: &str = "Failed to create TLS config, did you set the correct permissions? Did you put the .pem files in the correct place?";
+        tracing::error!("{}", ERR_MSG.to_string());
+        anyhow::bail!(ERR_MSG);
+    };
 
     let tx = watch::Sender::new(Event::default().data(SYSTEM_STREAM_ERROR_DATA));
 
@@ -167,13 +169,17 @@ async fn main() -> Result<()> {
     let addr = SocketAddr::from((DEFAULT_IP_ADDRESS, port));
 
     tracing::info!("Starting HTTPS server at {addr}");
-    axum_server::bind_rustls(addr, config)
+    let axum_result = axum_server::bind_rustls(addr, config)
         .handle(handle)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
-        .await
-        .with_context(|| {
-            format!("Failed to start HTTPS server at {addr}, did you set the correct permissions?")
-        })?;
+        .await;
+
+    if let Err(e) = axum_result {
+        let err_msg: String =
+            format!("Failed to start HTTPS server at {addr}, did you set the correct permissions?");
+        tracing::error!(error = %e, "{}", err_msg);
+        anyhow::bail!(err_msg);
+    };
 
     tracing::info!("Server has been shut down.");
 
