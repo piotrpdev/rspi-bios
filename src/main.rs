@@ -10,6 +10,7 @@ use axum::extract::ConnectInfo;
 use axum::response::sse::KeepAlive;
 use axum::response::Redirect;
 use axum_server::tls_rustls::RustlsConfig;
+use clap::Parser;
 use tokio::signal;
 use tokio::sync::{watch, Mutex};
 use tokio::time::sleep;
@@ -31,32 +32,83 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use sysinfo::{Disks, Networks, ProcessesToUpdate, System};
 
-const SYSTEM_REFRESH_PERIOD: Duration = Duration::from_secs(5);
-const GRACEFUL_SHUTDOWN_PERIOD: Duration = Duration::from_secs(10);
-const ALIVE_CONNECTIONS_CHECK_PERIOD: Duration = Duration::from_secs(1);
-const SSE_KEEP_ALIVE_PERIOD: Duration = Duration::from_secs(1);
+#[derive(Parser, Debug)]
+#[command(version = env!("GIT_HASH"), about)]
+struct Args {
+    #[arg(long, value_parser = parse_duration, default_value = "5")]
+    system_refresh_interval: Duration,
 
-const DEFAULT_IP_ADDRESS: std::net::IpAddr = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0));
-const DEFAULT_PORT: u16 = 3000;
+    #[arg(long, value_parser = parse_duration, default_value = "10")]
+    graceful_shutdown_duration: Duration,
 
-const DEFAULT_TLS_DIR: &str = "/etc/rspi-bios/certs";
-const DEFAULT_TLS_CERT_FILE_NAME: &str = "cert.pem";
-const DEFAULT_TLS_KEY_FILE: &str = "key.pem";
+    #[arg(long, value_parser = parse_duration, default_value = "1")]
+    alive_connections_check_interval: Duration,
 
-const DEFAULT_LOG_PATH: &str = "/var/log/rspi-bios/";
+    #[arg(long, value_parser = parse_duration, default_value = "1")]
+    sse_keep_alive_interval: Duration,
 
-const SYSTEM_STREAM_ERROR_DATA: &str = "0, 0, 0, 0";
+    #[arg(long, default_value_t = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)))]
+    https_ip_address: std::net::IpAddr,
 
-const DEFAULT_KERNEL_VERSION: &str = "v6.1";
-const DEFAULT_CPU_BRAND: &str = "Cortex-A72";
-const DEFAULT_CPU_BRAND_SHORT: &str = "Cortex-A";
-const DEFAULT_CPU_FREQUENCY: u64 = 1_800;
-const DEFAULT_DISK_SPACE: u64 = 32_000_000_000;
-const DEFAULT_MODEL_NAME: &str = "Raspberry Pi 4 Model B Rev 1.4";
-const DEFAULT_OS_VERSION: &str = "Raspbian GNU/Linux 11 (bullseye)";
-const DEFAULT_CPU_ARCH: &str = "aarch64";
+    #[arg(long, default_value_t = 3000)]
+    https_port: u16,
+
+    #[arg(long, default_value_os_t = PathBuf::from("/etc/rspi-bios/certs"))]
+    tls_dir: PathBuf,
+
+    #[arg(long, default_value = "cert.pem")]
+    tls_cert_file_name: String,
+
+    #[arg(long, default_value = "key.pem")]
+    tls_key_file_name: String,
+
+    #[arg(long, default_value_os_t = PathBuf::from("/var/log/rspi-bios/"))]
+    log_path: PathBuf,
+
+    #[arg(long, default_value = "0, 0, 0, 0")]
+    system_stream_error_data: String,
+
+    #[arg(long, default_value = "v6.1")]
+    kernel_version_fallback: String,
+
+    #[arg(long, default_value = "Cortex-A72")]
+    cpu_brand_fallback: String,
+
+    #[arg(long, default_value = "Cortex-A")]
+    cpu_brand_short_fallback: String,
+
+    #[arg(long, default_value_t = 1_800)]
+    cpu_frequency_fallback: u64,
+
+    #[arg(long, default_value_t = 32_000_000_000)]
+    disk_space_fallback: u64,
+
+    #[arg(long, default_value = "Raspberry Pi 4 Model B Rev 1.4")]
+    model_name_fallback: String,
+
+    #[arg(long, default_value = "Raspbian GNU/Linux 11 (bullseye)")]
+    os_version_fallback: String,
+
+    #[arg(long, default_value = "aarch64")]
+    cpu_arch_fallback: String,
+
+    /// Send DEBUG events to STDOUT in release
+    #[arg(long)]
+    force_debug_stdout: bool,
+
+    /// Place debug log file in the same directory as the binary (overrides `--log_path`)
+    #[arg(long)]
+    force_debug_local: bool,
+}
+
+// https://stackoverflow.com/a/72314001/19020549
+fn parse_duration(arg: &str) -> Result<Duration, std::num::ParseIntError> {
+    let seconds = arg.parse()?;
+    Ok(Duration::from_secs(seconds))
+}
 
 struct AppState {
+    args: Mutex<Args>,
     system_tx: watch::Sender<Event>,
     system: Mutex<System>,
     kernel_version: Mutex<String>,
@@ -66,19 +118,18 @@ struct AppState {
     networks: Mutex<Networks>,
 }
 
+#[allow(clippy::too_many_lines)]
 #[tokio::main]
 async fn main() -> Result<()> {
-    let exe_path = env::current_exe().context("Failed to get exe path")?;
-    let port = env::args().nth(1).map_or(DEFAULT_PORT, |port_arg| {
-        port_arg.parse().unwrap_or(DEFAULT_PORT)
-    });
+    let args = Args::parse();
 
-    let log_path = get_log_path(&exe_path);
+    let exe_path = env::current_exe().context("Failed to get exe path")?;
+    let log_path = get_log_path(&exe_path, &args.log_path, args.force_debug_local);
 
     let log_file = std::fs::OpenOptions::new()
         .append(true)
         .create(true)
-        .open(log_path.clone())
+        .open(&log_path)
         .with_context(|| {
             format!("Failed to open/create {log_path:?}, did you set the correct permissions?")
         })?;
@@ -99,7 +150,7 @@ async fn main() -> Result<()> {
                 .with_writer(log_file),
         );
 
-    if cfg!(debug_assertions) || env::var("RSPI_BIOS_DEBUG").is_ok() {
+    if cfg!(debug_assertions) || args.force_debug_stdout {
         subscriber.with(tracing_subscriber::fmt::layer()).init();
     } else {
         subscriber
@@ -117,37 +168,50 @@ async fn main() -> Result<()> {
     );
 
     tracing::info!("Creating TLS config");
-    let cert_dirs_to_search = get_cert_dirs_to_search(&exe_path);
-    let Some(config) = create_tls_config(cert_dirs_to_search).await else {
+    let cert_dirs_to_search = get_cert_dirs_to_search(&exe_path, &args.tls_dir);
+    let Some(config) = create_tls_config(
+        cert_dirs_to_search,
+        &args.tls_cert_file_name,
+        &args.tls_key_file_name,
+    )
+    .await
+    else {
         const ERR_MSG: &str = "Failed to create TLS config, did you set the correct permissions? Did you put the .pem files in the correct place?";
         tracing::error!("{}", ERR_MSG.to_string());
         anyhow::bail!(ERR_MSG);
     };
-
-    let tx = watch::Sender::new(Event::default().data(SYSTEM_STREAM_ERROR_DATA));
-
-    // Create our shared state
-    tracing::debug!("Creating initial state");
-    let state = Arc::new(AppState {
-        system_tx: tx,
-        system: Mutex::new(System::new_all()),
-        kernel_version: Mutex::new(
-            System::kernel_version().unwrap_or_else(|| DEFAULT_KERNEL_VERSION.to_string()),
-        ),
-        os_version: Mutex::new(
-            System::long_os_version().unwrap_or_else(|| DEFAULT_OS_VERSION.to_string()),
-        ),
-        cpu_arch: Mutex::new(System::cpu_arch().unwrap_or_else(|| DEFAULT_CPU_ARCH.to_string())),
-        disks: Mutex::new(Disks::new_with_refreshed_list()),
-        networks: Mutex::new(Networks::new_with_refreshed_list()),
-    });
 
     // Create a handle for our TLS server so the shutdown signal can all shutdown
     let handle = axum_server::Handle::new();
 
     // Spawn a task to gracefully shutdown server.
     tracing::debug!("Spawning graceful shutdown handler");
-    tokio::spawn(graceful_shutdown(handle.clone()));
+    tokio::spawn(graceful_shutdown(
+        handle.clone(),
+        args.graceful_shutdown_duration,
+        args.alive_connections_check_interval,
+    ));
+
+    let addr = SocketAddr::from((args.https_ip_address, args.https_port));
+
+    let tx = watch::Sender::new(Event::default().data(&args.system_stream_error_data));
+
+    // Create our shared state
+    tracing::debug!("Creating initial state");
+    let state = Arc::new(AppState {
+        kernel_version: Mutex::new(
+            System::kernel_version().unwrap_or_else(|| args.kernel_version_fallback.clone()),
+        ),
+        os_version: Mutex::new(
+            System::long_os_version().unwrap_or_else(|| args.os_version_fallback.clone()),
+        ),
+        cpu_arch: Mutex::new(System::cpu_arch().unwrap_or_else(|| args.cpu_arch_fallback.clone())),
+        args: Mutex::new(args),
+        system_tx: tx,
+        system: Mutex::new(System::new_all()),
+        disks: Mutex::new(Disks::new_with_refreshed_list()),
+        networks: Mutex::new(Networks::new_with_refreshed_list()),
+    });
 
     // Spawn a task to send events
     tracing::debug!("Spawning system info stream");
@@ -165,8 +229,6 @@ async fn main() -> Result<()> {
                 .make_span_with(DefaultMakeSpan::default().include_headers(true)),
         )
         .with_state(state);
-
-    let addr = SocketAddr::from((DEFAULT_IP_ADDRESS, port));
 
     tracing::info!("Starting HTTPS server at {addr}");
     let axum_result = axum_server::bind_rustls(addr, config)
@@ -233,18 +295,35 @@ async fn index_handler(
     tracing::info!("Connection made to index.html from {addr}");
     // TODO: Get model name from `tail -n 1 /proc/cpuinfo | cut -d':' -f2 | cut -c2-`
 
+    let (
+        cpu_brand_fallback,
+        cpu_frequency_fallback,
+        disk_space_fallback,
+        model_name_fallback,
+        cpu_brand_short_fallback,
+    ) = {
+        let args = state.args.lock().await;
+        (
+            args.cpu_brand_fallback.clone(),
+            args.cpu_frequency_fallback,
+            args.disk_space_fallback,
+            args.model_name_fallback.clone(),
+            args.cpu_brand_short_fallback.clone(),
+        )
+    };
+
     let (cpu_brand, cpu_count, cpu_speed, total_memory, process_count) = {
         let system = state.system.lock().await;
         (
             system
                 .cpus()
                 .first()
-                .map_or_else(|| DEFAULT_CPU_BRAND.to_string(), |c| c.brand().to_string()),
+                .map_or_else(|| cpu_brand_fallback.to_string(), |c| c.brand().to_string()),
             system.cpus().len(),
             system
                 .cpus()
                 .first()
-                .map_or(DEFAULT_CPU_FREQUENCY, sysinfo::Cpu::frequency),
+                .map_or(cpu_frequency_fallback, sysinfo::Cpu::frequency),
             system.total_memory(),
             system.processes().len(),
         )
@@ -254,7 +333,7 @@ async fn index_handler(
         let disks = state.disks.lock().await;
         (disks
             .first()
-            .map_or(DEFAULT_DISK_SPACE, sysinfo::Disk::total_space)
+            .map_or(disk_space_fallback, sysinfo::Disk::total_space)
             / 1_000_000_000
             + 7)
             & !7
@@ -272,11 +351,11 @@ async fn index_handler(
 
     let template = IndexTemplate {
         kernel_version: state.kernel_version.lock().await.to_string(), // 6.6.31+rpt-rpi-v8
-        model_name: DEFAULT_MODEL_NAME.to_string(),
+        model_name: model_name_fallback.to_string(),
         cpu_brand: cpu_brand.to_string(), // Cortex-A72
         cpu_brand_short: cpu_brand
             .get(0..cpu_brand.len() - 2)
-            .unwrap_or(DEFAULT_CPU_BRAND_SHORT)
+            .unwrap_or(&cpu_brand_short_fallback)
             .to_string()
             .to_uppercase(), // CORTEX-A
         cpu_count,                        // 4
@@ -307,11 +386,12 @@ async fn sse_handler(
 
     let system_stream = WatchStream::from_changes(system_rx).map(Ok);
 
-    Sse::new(system_stream).keep_alive(KeepAlive::new().interval(SSE_KEEP_ALIVE_PERIOD))
+    Sse::new(system_stream)
+        .keep_alive(KeepAlive::new().interval(state.args.lock().await.sse_keep_alive_interval))
 }
 
 async fn send_system_messages(state: Arc<AppState>) {
-    let mut interval = tokio::time::interval(SYSTEM_REFRESH_PERIOD);
+    let mut interval = tokio::time::interval(state.args.lock().await.system_refresh_interval);
     loop {
         interval.tick().await;
 
@@ -344,7 +424,11 @@ async fn send_system_messages(state: Arc<AppState>) {
 
 // https://github.com/tokio-rs/axum/blob/1ac617a1b540e8523347f5ee889d65cad9a45ec4/examples/tls-graceful-shutdown/src/main.rs
 // https://github.com/programatik29/axum-server/blob/d48b1a931909d156177bc87684910769e67be905/examples/graceful_shutdown.rs
-async fn graceful_shutdown(handle: axum_server::Handle) {
+async fn graceful_shutdown(
+    handle: axum_server::Handle,
+    graceful_shutdown_duration: Duration,
+    alive_connections_check_interval: Duration,
+) {
     let ctrl_c = async {
         signal::ctrl_c().await.unwrap_or_else(|e| {
             tracing::warn!(error = %e, "Failed to install Ctrl+C handler");
@@ -373,31 +457,35 @@ async fn graceful_shutdown(handle: axum_server::Handle) {
     // Refuses new connections
     // 10 secs is how long docker will wait to force shutdown
     tracing::info!("Received termination signal, shutting down...");
-    handle.graceful_shutdown(Some(GRACEFUL_SHUTDOWN_PERIOD));
+    handle.graceful_shutdown(Some(graceful_shutdown_duration));
 
     // Print alive connection count every second.
     loop {
-        sleep(ALIVE_CONNECTIONS_CHECK_PERIOD).await;
+        sleep(alive_connections_check_interval).await;
         tracing::debug!("Alive connections: {}", handle.connection_count());
     }
 }
 
-async fn create_tls_config(cert_dirs_to_search: Vec<PathBuf>) -> Option<RustlsConfig> {
+async fn create_tls_config(
+    cert_dirs_to_search: Vec<PathBuf>,
+    tls_cert_file_name: &str,
+    tls_key_file_name: &str,
+) -> Option<RustlsConfig> {
     for cert_dir in &cert_dirs_to_search {
         tracing::debug!("Attempting to load TLS .pem files from {cert_dir:?}");
         let config_result = RustlsConfig::from_pem_file(
-            cert_dir.join(DEFAULT_TLS_CERT_FILE_NAME),
-            cert_dir.join(DEFAULT_TLS_KEY_FILE),
+            cert_dir.join(tls_cert_file_name),
+            cert_dir.join(tls_key_file_name),
         )
         .await;
 
         match config_result {
             Ok(t) => {
-                tracing::info!("Found TLS {DEFAULT_TLS_CERT_FILE_NAME} and {DEFAULT_TLS_KEY_FILE} file(s) in {cert_dir:?}");
+                tracing::info!("Found TLS {tls_cert_file_name} and {tls_key_file_name} file(s) in {cert_dir:?}");
                 return Some(t);
             }
             Err(e) => {
-                tracing::debug!(error = %e, "Failed to read/find TLS {DEFAULT_TLS_CERT_FILE_NAME} and/or {DEFAULT_TLS_KEY_FILE} file(s) in {cert_dir:?}");
+                tracing::debug!(error = %e, "Failed to read/find TLS {tls_cert_file_name} and/or {tls_key_file_name} file(s) in {cert_dir:?}");
             }
         }
     }
@@ -405,18 +493,20 @@ async fn create_tls_config(cert_dirs_to_search: Vec<PathBuf>) -> Option<RustlsCo
     None
 }
 
-fn get_cert_dirs_to_search(exe_path: &std::path::Path) -> std::vec::Vec<std::path::PathBuf> {
+fn get_cert_dirs_to_search(
+    exe_path: &std::path::Path,
+    tls_dir: &std::path::Path,
+) -> std::vec::Vec<std::path::PathBuf> {
     let mut cert_dirs_to_search = Vec::<PathBuf>::new();
 
-    if cfg!(debug_assertions) || env::var("RSPI_BIOS_DEBUG").is_ok() {
+    if cfg!(debug_assertions) {
         let cargo_certs_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("certs");
         cert_dirs_to_search.push(cargo_certs_path);
     }
 
     #[cfg(unix)]
     {
-        let etc_certs_path = PathBuf::from(DEFAULT_TLS_DIR);
-        cert_dirs_to_search.push(etc_certs_path);
+        cert_dirs_to_search.push(tls_dir.to_path_buf());
     }
 
     let local_certs_path = {
@@ -430,7 +520,11 @@ fn get_cert_dirs_to_search(exe_path: &std::path::Path) -> std::vec::Vec<std::pat
     cert_dirs_to_search
 }
 
-fn get_log_path(exe_path: &std::path::Path) -> std::path::PathBuf {
+fn get_log_path(
+    exe_path: &std::path::Path,
+    log_path_arg: &std::path::Path,
+    force_debug_local: bool,
+) -> std::path::PathBuf {
     let exe_log_path = {
         let mut log_path = exe_path.to_path_buf();
         log_path.pop();
@@ -442,10 +536,10 @@ fn get_log_path(exe_path: &std::path::Path) -> std::path::PathBuf {
         let mut log_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         log_path.push("debug.log");
         log_path
-    } else if cfg!(windows) || env::var("RSPI_BIOS_DEBUG_LOCAL_LOG").is_ok() {
+    } else if cfg!(windows) || force_debug_local {
         exe_log_path.clone()
     } else {
-        let mut log_path = PathBuf::from(DEFAULT_LOG_PATH);
+        let mut log_path = log_path_arg.to_path_buf();
         log_path.push("debug.log");
         log_path
     };

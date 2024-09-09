@@ -90,7 +90,7 @@ ssh -t piotrpdev@192.168.0.200 "chmod +x ~/rspi-bios/rspi-bios && ~/rspi-bios/rs
 sudo setcap CAP_NET_BIND_SERVICE=+eip ./rspi-bios
 
 # Run on low port
-./rspi-bios 443
+./rspi-bios --https-port 443
 ```
 
 #### Start on boot (optional)

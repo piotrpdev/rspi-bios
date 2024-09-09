@@ -11,7 +11,7 @@ StartLimitBurst=5
 Type=simple
 User=piotrpdev
 WorkingDirectory=/var/log/rspi-bios/
-ExecStart=/usr/bin/rspi-bios 443
+ExecStart=/usr/bin/rspi-bios --https-port 443
 Restart=on-failure
 RestartSec=5s
 
