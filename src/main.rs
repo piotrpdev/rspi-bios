@@ -4,7 +4,8 @@ use std::path::PathBuf;
 use std::{convert::Infallible, net::SocketAddr};
 use std::{sync::Arc, time::Duration};
 
-use axum::extract::ConnectInfo;
+use axum::extract::{ConnectInfo, Host};
+use axum::handler::HandlerWithoutStateExt;
 use axum::response::sse::KeepAlive;
 use axum::response::Redirect;
 use axum_server::tls_rustls::RustlsConfig;
@@ -45,8 +46,14 @@ struct Args {
     #[arg(long, value_parser = parse_duration, default_value = "1")]
     sse_keep_alive_interval: Duration,
 
+    #[arg(long)]
+    https_redirect: bool,
+
     #[arg(long, default_value_t = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)))]
-    https_ip_address: std::net::IpAddr,
+    ip_address: std::net::IpAddr,
+
+    #[arg(long, default_value_t = 2000)]
+    http_port: u16,
 
     #[arg(long, default_value_t = 3000)]
     https_port: u16,
@@ -200,7 +207,16 @@ async fn main() {
         args.alive_connections_check_interval,
     ));
 
-    let addr = SocketAddr::from((args.https_ip_address, args.https_port));
+    if args.https_redirect {
+        // Spawn a second server to redirect http requests to this server
+        tokio::spawn(redirect_http_to_https(
+            args.ip_address,
+            args.http_port,
+            args.https_port,
+        ));
+    }
+
+    let addr = SocketAddr::from((args.ip_address, args.https_port));
 
     let tx = watch::Sender::new(Event::default().data(&args.system_stream_error_data));
 
@@ -250,6 +266,69 @@ async fn main() {
     };
 
     tracing::info!("Server has been shut down.");
+}
+
+// https://github.com/tokio-rs/axum/blob/6efcb75d99a437fa80c81e2308ec8234b023e1a7/examples/tls-rustls/src/main.rs
+#[allow(clippy::similar_names)]
+async fn redirect_http_to_https(ip_address: std::net::IpAddr, http_port: u16, https_port: u16) {
+    fn make_https(
+        host: &str,
+        uri: axum::http::Uri,
+        http_port: u16,
+        https_port: u16,
+    ) -> Result<axum::http::Uri, axum::BoxError> {
+        let mut parts = uri.into_parts();
+
+        parts.scheme = Some(axum::http::uri::Scheme::HTTPS);
+
+        if parts.path_and_query.is_none() {
+            parts.path_and_query = Some(axum::http::uri::PathAndQuery::from_static("/"));
+        }
+
+        let https_host = host.replace(&http_port.to_string(), &https_port.to_string());
+        parts.authority = Some(https_host.parse()?);
+
+        Ok(axum::http::Uri::from_parts(parts)?)
+    }
+
+    let redirect = move |ConnectInfo(addr): ConnectInfo<SocketAddr>,
+                         Host(host): Host,
+                         uri: axum::http::Uri| async move {
+        tracing::debug!("Connection made to HTTPS redirect server from {addr}");
+
+        match make_https(&host, uri.clone(), http_port, https_port) {
+            Ok(uri) => {
+                tracing::info!("Redirecting {addr} to HTTPS");
+                Ok(Redirect::permanent(&uri.to_string()))
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, uri = %uri, "Failed to convert URI to HTTPS");
+                Err(StatusCode::BAD_REQUEST)
+            }
+        }
+    };
+
+    let addr = SocketAddr::from((ip_address, http_port));
+
+    tracing::info!("Starting HTTP redirect server at {addr}");
+    let listener = match tokio::net::TcpListener::bind(addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to start HTTPS redirect server at {addr}, did you set the correct permissions?");
+            std::process::exit(1);
+        }
+    };
+
+    let axum_result = axum::serve(
+        listener,
+        redirect.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await;
+
+    if let Err(e) = axum_result {
+        tracing::error!(error = %e, "Failed to start HTTPS redirect server at {addr}, did you set the correct permissions?");
+        std::process::exit(1);
+    };
 }
 
 #[derive(Template)]
