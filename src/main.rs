@@ -4,8 +4,6 @@ use std::path::PathBuf;
 use std::{convert::Infallible, net::SocketAddr};
 use std::{sync::Arc, time::Duration};
 
-use anyhow::{Context, Result};
-
 use axum::extract::ConnectInfo;
 use axum::response::sse::KeepAlive;
 use axum::response::Redirect;
@@ -120,19 +118,30 @@ struct AppState {
 
 #[allow(clippy::too_many_lines)]
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
     let args = Args::parse();
 
-    let exe_path = env::current_exe().context("Failed to get exe path")?;
+    let exe_path = match env::current_exe() {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to get exe path");
+            std::process::exit(1);
+        }
+    };
     let log_path = get_log_path(&exe_path, &args.log_path, args.force_debug_local);
 
-    let log_file = std::fs::OpenOptions::new()
+    let log_file_result = std::fs::OpenOptions::new()
         .append(true)
         .create(true)
-        .open(&log_path)
-        .with_context(|| {
-            format!("Failed to open/create {log_path:?}, did you set the correct permissions?")
-        })?;
+        .open(&log_path);
+
+    let log_file = match log_file_result {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to open/create {log_path:?}, did you set the correct permissions?");
+            std::process::exit(1);
+        }
+    };
 
     let subscriber = tracing_subscriber::registry()
         .with(
@@ -176,9 +185,8 @@ async fn main() -> Result<()> {
     )
     .await
     else {
-        const ERR_MSG: &str = "Failed to create TLS config, did you set the correct permissions? Did you put the .pem files in the correct place?";
-        tracing::error!("{}", ERR_MSG.to_string());
-        anyhow::bail!(ERR_MSG);
+        tracing::error!("Failed to create TLS config, did you set the correct permissions? Did you put the .pem files in the correct place?");
+        std::process::exit(1);
     };
 
     // Create a handle for our TLS server so the shutdown signal can all shutdown
@@ -237,15 +245,11 @@ async fn main() -> Result<()> {
         .await;
 
     if let Err(e) = axum_result {
-        let err_msg: String =
-            format!("Failed to start HTTPS server at {addr}, did you set the correct permissions?");
-        tracing::error!(error = %e, "{}", err_msg);
-        anyhow::bail!(err_msg);
+        tracing::error!(error = %e, "Failed to start HTTPS server at {addr}, did you set the correct permissions?");
+        std::process::exit(1);
     };
 
     tracing::info!("Server has been shut down.");
-
-    Ok(())
 }
 
 #[derive(Template)]

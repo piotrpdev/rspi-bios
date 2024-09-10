@@ -32,7 +32,6 @@ assets = [
 ]
 
 [dependencies]
-anyhow = "1.0.86"
 askama = { version = "0.12.1", default-features = false, features = ["config"] }
 axum = { version = "0.7.5", default-features = false, features = ["tokio", "http1"] }
 axum-server = { version = "0.7.1", features = ["tls-rustls"] }
