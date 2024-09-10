@@ -31,7 +31,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use sysinfo::{Disks, Networks, ProcessesToUpdate, System};
 
 #[derive(Parser, Debug)]
-#[command(version = env!("GIT_HASH"), about)]
+#[command(version = env!("RSPI_BIOS_VERSION"), about)]
 struct Args {
     #[arg(long, value_parser = parse_duration, default_value = "5")]
     system_refresh_interval: Duration,
@@ -171,9 +171,9 @@ async fn main() {
     }
     tracing::info!("Logging to {log_path:?}");
     tracing::debug!(
-        "Running {} built from Git commit {}",
+        "Running {} version {}",
         env!("CARGO_CRATE_NAME"),
-        env!("GIT_HASH")
+        env!("RSPI_BIOS_VERSION")
     );
 
     tracing::info!("Creating TLS config");
@@ -269,7 +269,7 @@ struct IndexTemplate {
     process_count: usize,
     rx: u64,
     tx: u64,
-    git_hash: String,
+    version: String,
     os_version: String,
     cpu_arch: String,
 }
@@ -372,7 +372,7 @@ async fn index_handler(
         process_count,
         rx: total_rx,
         tx: total_tx,
-        git_hash: env!("GIT_HASH").to_string(),
+        version: env!("RSPI_BIOS_VERSION").to_string(),
         os_version: state.os_version.lock().await.to_string(),
         cpu_arch: state.cpu_arch.lock().await.to_string(),
     };

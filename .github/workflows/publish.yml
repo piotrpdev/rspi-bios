@@ -49,23 +49,38 @@ jobs:
           DRY_RUN: true
 
       - name: Static build (ARM64)
-        run: RUSTFLAGS='-C target-feature=+crt-static' cargo build --locked --release --target=aarch64-unknown-linux-gnu
+        run: cargo build --locked --release --target=aarch64-unknown-linux-gnu
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+          RSPI_BIOS_VERSION: ${{ steps.tag-dry.outputs.new_tag }}
 
       - name: Static build (ARMv7)
-        run: RUSTFLAGS='-C target-feature=+crt-static' cargo build --locked --release --target=armv7-unknown-linux-gnueabihf
+        run: cargo build --locked --release --target=armv7-unknown-linux-gnueabihf
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+          RSPI_BIOS_VERSION: ${{ steps.tag-dry.outputs.new_tag }}
 
       - name: Static deb build (ARM64)
-        run: RUSTFLAGS='-C target-feature=+crt-static' cargo deb --deb-version ${{ steps.tag-dry.outputs.new_tag }} --locked --target=aarch64-unknown-linux-gnu
+        run: cargo deb --deb-version $RSPI_BIOS_VERSION --locked --target=aarch64-unknown-linux-gnu
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+          RSPI_BIOS_VERSION: ${{ steps.tag-dry.outputs.new_tag }}
 
       - name: Static deb build (ARMv7)
-        run: RUSTFLAGS='-C target-feature=+crt-static' cargo deb --deb-version ${{ steps.tag-dry.outputs.new_tag }} --locked --target=armv7-unknown-linux-gnueabihf
+        run: cargo deb --deb-version $RSPI_BIOS_VERSION --locked --target=armv7-unknown-linux-gnueabihf
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+          RSPI_BIOS_VERSION: ${{ steps.tag-dry.outputs.new_tag }}
 
       - name: Rename binaries
         run: |
-          cp target/aarch64-unknown-linux-gnu/release/rspi-bios ./rspi-bios_${{ steps.tag-dry.outputs.new_tag }}_aarch64-unknown-linux-gnu
-          cp target/armv7-unknown-linux-gnueabihf/release/rspi-bios ./rspi-bios_${{ steps.tag-dry.outputs.new_tag }}_armv7-unknown-linux-gnueabihf
-          cp target/aarch64-unknown-linux-gnu/debian/rspi-bios_${{ steps.tag-dry.outputs.new_tag }}_arm64.deb ./rspi-bios_${{ steps.tag-dry.outputs.new_tag }}_arm64.deb
-          cp target/armv7-unknown-linux-gnueabihf/debian/rspi-bios_${{ steps.tag-dry.outputs.new_tag }}_armhf.deb ./rspi-bios_${{ steps.tag-dry.outputs.new_tag }}_armhf.deb
+          cp target/aarch64-unknown-linux-gnu/release/rspi-bios ./rspi-bios_$RSPI_BIOS_VERSION_aarch64-unknown-linux-gnu
+          cp target/armv7-unknown-linux-gnueabihf/release/rspi-bios ./rspi-bios_$RSPI_BIOS_VERSION_armv7-unknown-linux-gnueabihf
+          cp target/aarch64-unknown-linux-gnu/debian/rspi-bios_$RSPI_BIOS_VERSION_arm64.deb ./rspi-bios_$RSPI_BIOS_VERSION_arm64.deb
+          cp target/armv7-unknown-linux-gnueabihf/debian/rspi-bios_$RSPI_BIOS_VERSION_armhf.deb ./rspi-bios_$RSPI_BIOS_VERSION_armhf.deb
+        env:
+          RSPI_BIOS_VERSION: ${{ steps.tag-dry.outputs.new_tag }}
+
 
       - name: Tag (Real run)
         id: tag-real
