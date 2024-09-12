@@ -49,7 +49,7 @@ unused_imports = "deny"
 unused_variables = "deny"
 unused_must_use = "deny"
 dead_code = "warn"
-missing_docs = "allow"
+missing_docs = "deny"
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }

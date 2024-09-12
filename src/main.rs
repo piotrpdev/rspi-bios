@@ -1,3 +1,7 @@
+//! RSPI-BIOS: Raspberry Pi dashboard that mimics the style of old BIOS designs.
+//! Author: Piotr Placzek (piotrpdev) <https://github.com/piotrpdev>
+//! SPDX-License-Identifier: GPL-3.0-only
+
 use std::env;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
@@ -107,12 +111,19 @@ struct Args {
     force_debug_local: bool,
 }
 
-// https://stackoverflow.com/a/72314001/19020549
+/// Used for parsing [`Duration`] in [`clap`] CLI parameters e.g. `graceful_shutdown_duration`
+///
+/// Taken from: <https://stackoverflow.com/a/72314001/19020549>
 fn parse_duration(arg: &str) -> Result<Duration, std::num::ParseIntError> {
     let seconds = arg.parse()?;
     Ok(Duration::from_secs(seconds))
 }
 
+/// State used by different parts of the app, including [`tokio`] tasks.
+///
+/// Has to be thread safe.
+///
+/// Stores some system information to avoid recomputing it every time.
 struct AppState {
     args: Mutex<Args>,
     system_tx: watch::Sender<Event>,
@@ -124,6 +135,18 @@ struct AppState {
     networks: Mutex<Networks>,
 }
 
+/// Main function. Returns [`ExitCode`] on error.
+///
+/// Sets up:
+/// - Logging
+/// - TLS config
+/// - State for the HTTPS server
+///
+/// Spawns [`tokio`] tasks to handle:
+/// - Graceful shutdown
+/// - `HTTP` to `HTTPS` redirection
+/// - Expensive system information fetching
+/// - `HTTPS` server
 #[allow(clippy::too_many_lines)]
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -287,7 +310,9 @@ async fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Returns `false` on failure
+/// Runs the main `HTTPS` server.
+///
+/// Returns `false` if starting the server fails e.g. if unable to bind to port.
 async fn https_server(
     addr: std::net::SocketAddr,
     state: Arc<AppState>,
@@ -319,8 +344,11 @@ async fn https_server(
     true
 }
 
-// https://github.com/tokio-rs/axum/blob/6efcb75d99a437fa80c81e2308ec8234b023e1a7/examples/tls-rustls/src/main.rs
-/// Returns `false` on failure
+/// Runs the server that redirects `HTTP` requests to the `HTTPS` server.
+///
+/// Returns `false` if starting the server fails e.g. if unable to bind to port.
+///
+/// Based on example code from: <https://github.com/tokio-rs/axum/blob/6efcb75d99a437fa80c81e2308ec8234b023e1a7/examples/tls-rustls/src/main.rs>
 #[allow(clippy::similar_names)]
 async fn redirect_http_to_https(
     ip_address: std::net::IpAddr,
@@ -389,6 +417,7 @@ async fn redirect_http_to_https(
     true
 }
 
+/// Describes data used in the provided [`askama`] `index.html` template.
 #[derive(Template)]
 #[template(path = "index.html")]
 struct IndexTemplate {
@@ -411,8 +440,10 @@ struct IndexTemplate {
     cpu_arch: String,
 }
 
+/// Generic [`askama`] template type.
 struct HtmlTemplate<T>(T);
 
+/// Renders the provided [`askama`] template.
 impl<T> IntoResponse for HtmlTemplate<T>
 where
     T: Template,
@@ -429,6 +460,9 @@ where
     }
 }
 
+/// Handles `GET` requests to `index.html`.
+///
+/// Takes [`sysinfo`] data, formats it into a nicer looking format, and returns a rendered [`askama`] template containing it.
 async fn index_handler(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     state: State<Arc<AppState>>,
@@ -517,6 +551,9 @@ async fn index_handler(
     HtmlTemplate(template)
 }
 
+/// Handles [Server-Sent Events (SSE)](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events).
+///
+/// Uses a [`WatchStream`] to only send users the latest information.
 async fn sse_handler(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     state: State<Arc<AppState>>,
@@ -531,6 +568,10 @@ async fn sse_handler(
         .keep_alive(KeepAlive::new().interval(state.args.lock().await.sse_keep_alive_interval))
 }
 
+/// Creates SSE events used by `sse_handler()`.
+///
+/// Some system information is expensive to fetch for every connection, this function does so once every couple of
+/// seconds and sends it to `sse_handler()` instances over a [`watch`].
 async fn send_system_messages(state: Arc<AppState>) {
     let mut interval = tokio::time::interval(state.args.lock().await.system_refresh_interval);
     loop {
@@ -563,8 +604,13 @@ async fn send_system_messages(state: Arc<AppState>) {
     }
 }
 
-// https://github.com/tokio-rs/axum/blob/1ac617a1b540e8523347f5ee889d65cad9a45ec4/examples/tls-graceful-shutdown/src/main.rs
-// https://github.com/programatik29/axum-server/blob/d48b1a931909d156177bc87684910769e67be905/examples/graceful_shutdown.rs
+/// Shuts down the `HTTPS` server gracefully by initially refusing new connections, then terminating after a given period.
+///
+/// Shutdown initiated via `SIGTERM` or `CTRL+C`.
+///
+/// Based on these examples:
+/// - <https://github.com/tokio-rs/axum/blob/1ac617a1b540e8523347f5ee889d65cad9a45ec4/examples/tls-graceful-shutdown/src/main.rs>
+/// - <https://github.com/programatik29/axum-server/blob/d48b1a931909d156177bc87684910769e67be905/examples/graceful_shutdown.rs>
 async fn graceful_shutdown(
     handle: axum_server::Handle,
     graceful_shutdown_duration: Duration,
@@ -607,6 +653,11 @@ async fn graceful_shutdown(
     }
 }
 
+/// Searches for `.pem` TLS certificate and key files in the provided directories.
+///
+/// Attempts to create a [`RustlsConfig`] using them.
+///
+/// Returns [`None`] if process was unsuccessful.
 async fn create_tls_config(
     cert_dirs_to_search: Vec<PathBuf>,
     tls_cert_file_name: &str,
@@ -634,10 +685,10 @@ async fn create_tls_config(
     None
 }
 
-fn get_cert_dirs_to_search(
-    exe_path: &std::path::Path,
-    tls_dir: &std::path::Path,
-) -> std::vec::Vec<std::path::PathBuf> {
+/// Creates list of directories to search for `.pem` TLS certificate and key files.
+///
+/// Returned list varies depending on platform and release vs development build.
+fn get_cert_dirs_to_search(exe_path: &std::path::Path, tls_dir: &std::path::Path) -> Vec<PathBuf> {
     let mut cert_dirs_to_search = Vec::<PathBuf>::new();
 
     if cfg!(debug_assertions) {
@@ -661,11 +712,14 @@ fn get_cert_dirs_to_search(
     cert_dirs_to_search
 }
 
+/// Returns path to use for `debug.log` file.
+///
+/// Returned path varies depending on platform and release vs development build.
 fn get_log_path(
     exe_path: &std::path::Path,
     log_path_arg: &std::path::Path,
     force_debug_local: bool,
-) -> std::path::PathBuf {
+) -> PathBuf {
     let exe_log_path = {
         let mut log_path = exe_path.to_path_buf();
         log_path.pop();
