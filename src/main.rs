@@ -1,6 +1,7 @@
 use std::env;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
+use std::process::ExitCode;
 use std::{convert::Infallible, net::SocketAddr};
 use std::{sync::Arc, time::Duration};
 
@@ -125,14 +126,14 @@ struct AppState {
 
 #[allow(clippy::too_many_lines)]
 #[tokio::main]
-async fn main() {
+async fn main() -> ExitCode {
     let args = Args::parse();
 
     let exe_path = match env::current_exe() {
         Ok(e) => e,
         Err(e) => {
-            tracing::error!(error = %e, "Failed to get exe path");
-            std::process::exit(1);
+            eprintln!("Failed to get exe path.\n\nError={e:#?}");
+            return ExitCode::FAILURE;
         }
     };
     let log_path = get_log_path(&exe_path, &args.log_path, args.force_debug_local);
@@ -145,8 +146,8 @@ async fn main() {
     let log_file = match log_file_result {
         Ok(l) => l,
         Err(e) => {
-            tracing::error!(error = %e, "Failed to open/create {log_path:?}, did you set the correct permissions?");
-            std::process::exit(1);
+            eprintln!("Failed to open/create {log_path:?}, did you set the correct permissions?\n\nError={e:#?}");
+            return ExitCode::FAILURE;
         }
     };
 
@@ -185,7 +186,7 @@ async fn main() {
 
     tracing::info!("Creating TLS config");
     let cert_dirs_to_search = get_cert_dirs_to_search(&exe_path, &args.tls_dir);
-    let Some(config) = create_tls_config(
+    let Some(tls_config) = create_tls_config(
         cert_dirs_to_search,
         &args.tls_cert_file_name,
         &args.tls_key_file_name,
@@ -193,7 +194,7 @@ async fn main() {
     .await
     else {
         tracing::error!("Failed to create TLS config, did you set the correct permissions? Did you put the .pem files in the correct place?");
-        std::process::exit(1);
+        return ExitCode::FAILURE;
     };
 
     // Create a handle for our TLS server so the shutdown signal can all shutdown
@@ -201,20 +202,28 @@ async fn main() {
 
     // Spawn a task to gracefully shutdown server.
     tracing::debug!("Spawning graceful shutdown handler");
-    tokio::spawn(graceful_shutdown(
+    let graceful_shutdown_task = tokio::spawn(graceful_shutdown(
         handle.clone(),
         args.graceful_shutdown_duration,
         args.alive_connections_check_interval,
     ));
 
-    if args.https_redirect {
+    let https_redirect_task = if args.https_redirect {
         // Spawn a second server to redirect http requests to this server
         tokio::spawn(redirect_http_to_https(
             args.ip_address,
             args.http_port,
             args.https_port,
-        ));
-    }
+        ))
+    } else {
+        // TODO: Find out if there is a better way than doing this
+        tokio::spawn(async {
+            let mut interval = tokio::time::interval(Duration::from_secs(1));
+            loop {
+                interval.tick().await;
+            }
+        })
+    };
 
     let addr = SocketAddr::from((args.ip_address, args.https_port));
 
@@ -239,10 +248,42 @@ async fn main() {
 
     // Spawn a task to send events
     tracing::debug!("Spawning system info stream");
-    tokio::spawn(send_system_messages(state.clone()));
+    let system_messages_task = tokio::spawn(send_system_messages(state.clone()));
 
-    // build our application with some routes
-    // ? maybe use https://docs.rs/tower-default-headers/latest/tower_default_headers/ to add 'server: Axum' header
+    // Spawn main server
+    let https_server_task = tokio::spawn(https_server(addr, state, tls_config, handle));
+
+    // Wait for a task to complete, useful if 'https_redirect_task' returns error for example.
+    tokio::select! {
+        _ = graceful_shutdown_task => {},
+        result = https_redirect_task => {
+            // HTTPS redirect server may fail to bind to port.
+            //  In that case, we want to exit with error.
+            match result {
+                Ok(s) => {
+                    if !s {
+                        return ExitCode::FAILURE;
+                    }
+                },
+                Err(_) => {
+                    return ExitCode::FAILURE
+                },
+            }
+        },
+        _ = system_messages_task => {},
+        _ = https_server_task => {},
+    }
+
+    tracing::info!("Goodbye");
+    ExitCode::SUCCESS
+}
+
+async fn https_server(
+    addr: std::net::SocketAddr,
+    state: Arc<AppState>,
+    tls_config: RustlsConfig,
+    handle: axum_server::Handle,
+) {
     let app = Router::new()
         .fallback(get(|| async { Redirect::permanent("/") }))
         .route("/", get(index_handler))
@@ -255,22 +296,24 @@ async fn main() {
         .with_state(state);
 
     tracing::info!("Starting HTTPS server at {addr}");
-    let axum_result = axum_server::bind_rustls(addr, config)
+    let axum_result = axum_server::bind_rustls(addr, tls_config)
         .handle(handle)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await;
 
     if let Err(e) = axum_result {
         tracing::error!(error = %e, "Failed to start HTTPS server at {addr}, did you set the correct permissions?");
-        std::process::exit(1);
     };
-
-    tracing::info!("Server has been shut down.");
 }
 
 // https://github.com/tokio-rs/axum/blob/6efcb75d99a437fa80c81e2308ec8234b023e1a7/examples/tls-rustls/src/main.rs
+/// Returns `false` on failure
 #[allow(clippy::similar_names)]
-async fn redirect_http_to_https(ip_address: std::net::IpAddr, http_port: u16, https_port: u16) {
+async fn redirect_http_to_https(
+    ip_address: std::net::IpAddr,
+    http_port: u16,
+    https_port: u16,
+) -> bool {
     fn make_https(
         host: &str,
         uri: axum::http::Uri,
@@ -315,7 +358,7 @@ async fn redirect_http_to_https(ip_address: std::net::IpAddr, http_port: u16, ht
         Ok(l) => l,
         Err(e) => {
             tracing::error!(error = %e, "Failed to start HTTPS redirect server at {addr}, did you set the correct permissions?");
-            std::process::exit(1);
+            return false;
         }
     };
 
@@ -327,8 +370,10 @@ async fn redirect_http_to_https(ip_address: std::net::IpAddr, http_port: u16, ht
 
     if let Err(e) = axum_result {
         tracing::error!(error = %e, "Failed to start HTTPS redirect server at {addr}, did you set the correct permissions?");
-        std::process::exit(1);
+        return false;
     };
+
+    true
 }
 
 #[derive(Template)]
