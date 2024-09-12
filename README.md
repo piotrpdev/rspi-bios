@@ -50,6 +50,10 @@ sudo systemctl enable --now rspi-bios
 
 ### Cross-compile for Raspberry Pi
 
+> [!NOTE]
+> You can look at [`.github/workflows/publish.yml`][publish] to see the instructions
+> below in action.
+
 #### Build
 
 ```bash
@@ -164,6 +168,7 @@ Made using the following resources:
 [tunnel]: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
 [origin]: https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/
 [postinst]: ./debian/postinst
+[publish]: ./.github/workflows/publish.yml
 [service]: ./debian/rspi-bios.service
 [cargo-deb]: https://github.com/kornelski/cargo-deb
 [cargo-watch]: https://github.com/watchexec/cargo-watch
