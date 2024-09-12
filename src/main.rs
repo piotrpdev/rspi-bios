@@ -257,8 +257,6 @@ async fn main() -> ExitCode {
     tokio::select! {
         _ = graceful_shutdown_task => {},
         result = https_redirect_task => {
-            // HTTPS redirect server may fail to bind to port.
-            //  In that case, we want to exit with error.
             match result {
                 Ok(s) => {
                     if !s {
@@ -271,19 +269,31 @@ async fn main() -> ExitCode {
             }
         },
         _ = system_messages_task => {},
-        _ = https_server_task => {},
+        result = https_server_task => {
+            match result {
+                Ok(s) => {
+                    if !s {
+                        return ExitCode::FAILURE;
+                    }
+                },
+                Err(_) => {
+                    return ExitCode::FAILURE
+                },
+            }
+        },
     }
 
     tracing::info!("Goodbye");
     ExitCode::SUCCESS
 }
 
+/// Returns `false` on failure
 async fn https_server(
     addr: std::net::SocketAddr,
     state: Arc<AppState>,
     tls_config: RustlsConfig,
     handle: axum_server::Handle,
-) {
+) -> bool {
     let app = Router::new()
         .fallback(get(|| async { Redirect::permanent("/") }))
         .route("/", get(index_handler))
@@ -303,7 +313,10 @@ async fn https_server(
 
     if let Err(e) = axum_result {
         tracing::error!(error = %e, "Failed to start HTTPS server at {addr}, did you set the correct permissions?");
+        return false;
     };
+
+    true
 }
 
 // https://github.com/tokio-rs/axum/blob/6efcb75d99a437fa80c81e2308ec8234b023e1a7/examples/tls-rustls/src/main.rs
